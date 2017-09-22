@@ -6,8 +6,6 @@ LIB_TLDEVELDIR = @LIB_TLDEVELDIR@
 
 SUBDIRS = tldevel src
 
-clean:
-	rm -f TAGS
 
 TAGS:
 	etags -o TAGS -a ${srcdir}/src/*.c

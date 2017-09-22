@@ -10,7 +10,7 @@ MYLIBDIRS = ../tldevel/libthrpool.a \
 MYINCDIRS = -I${top_builddir}/${LIB_TLDEVELDIR} \
             -I${top_srcdir}/${LIB_TLDEVELDIR}
 
-LIBS = -lm -lsqlite3 -lgsl -lgslcblas  -lpthread
+LIBS = -lm -lgsl -lgslcblas  -lpthread
 
 AM_CPPFLAGS=${MYINCDIRS} 
 

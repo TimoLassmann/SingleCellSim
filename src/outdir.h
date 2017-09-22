@@ -3,9 +3,10 @@
 
 #define outdir_header
 
-#define OUTDIR_PARAM "param"
 #define OUTDIR_CHECKPOINTS  "checks" 
 #define OUTDIR_LOG "logs"
+#define OUTDIR_RESULTS "results"
+
 
 #define LOGFILE "log.txt"
 

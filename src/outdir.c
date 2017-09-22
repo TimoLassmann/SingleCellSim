@@ -81,7 +81,7 @@ int create_output_directories(char* root)
 		ERROR_MSG("Directory %s already exists.",out_root_dir);
 	}*/
 	
-	snprintf(buffer, BUFFER_LEN, "%s%s/",out_root_dir,OUTDIR_PARAM);
+	snprintf(buffer, BUFFER_LEN, "%s%s/",out_root_dir,OUTDIR_RESULTS);
 	RUN(create_dir(buffer,1));
         	
 	snprintf(buffer, BUFFER_LEN, "%s%s/",out_root_dir,OUTDIR_CHECKPOINTS);
