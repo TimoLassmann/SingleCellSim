@@ -6,7 +6,22 @@ AC_CONFIG_FILES([Makefile src/Makefile])
 
 AC_CHECK_HEADERS([stdlib.h])
 
-LIB_TLDEVELDIR="libtldevel"
+tldevel_check_f=$ac_abs_confdir/tldevel/README
+
+AC_CHECK_FILE([$tldevel_check_f], [],[have_tldevel=no])
+
+
+if test "x${have_tldevel}" = xno; then
+   echo "------------------------------------------"
+   echo " Unable to find pthreads on this system.  "
+   echo " Building a single-threaded version.      "
+   echo "------------------------------------------"
+   AC_MSG_ERROR([ASFSAF])
+fi
+
+
+
+LIB_TLDEVELDIR="tldevel"
 AC_SUBST(LIB_TLDEVELDIR)
 
 
@@ -58,6 +73,6 @@ ac_configure_args="$ac_configure_args PACKAGE_VERSION=$PACKAGE_VERSION   PACKAGE
 
 
 
-AC_CONFIG_SUBDIRS([libtldevel])
+AC_CONFIG_SUBDIRS([tldevel])
 
 AC_OUTPUT
