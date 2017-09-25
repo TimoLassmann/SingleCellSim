@@ -1,10 +1,45 @@
 AC_INIT([singleCellsim], [m4_esyscmd_s([git describe --always])])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE
+# Checks for programs.
 AC_PROG_CC
+AC_PROG_INSTALL
+
+# Checks for libraries.
+
+# FIXME: Replace `main' with a function in `-lgslcblas':
+AC_CHECK_LIB([gslcblas], [cblas_sdot])
+# FIXME: Replace `main' with a function in `-lgsl':
+
+
+AC_CHECK_LIB([gsl],[gsl_integration_qag],[],[AC_MSG_WARN([gsl library missing - some programs will not be compiled!])])
+
+AM_CONDITIONAL([GOT_GSL], [ test "$ac_cv_lib_gsl_gsl_integration_qag" = "yes"])
+
+# FIXME: Replace `main' with a function in `-lm':
+AC_CHECK_LIB([m], [log])
+# FIXME: Replace `main' with a function in `-lpthread':
+AC_CHECK_LIB([pthread], [pthread_create])
+
+
+AC_CHECK_HEADERS([float.h stdint.h stdlib.h string.h unistd.h])
+
+# Checks for typedefs, structures, and compiler characteristics.
+AC_TYPE_INT32_T
+AC_TYPE_SIZE_T
+AC_TYPE_UINT8_T
+
+# Checks for library functions.
+AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
+AC_FUNC_MALLOC
+AC_FUNC_REALLOC
+AC_CHECK_FUNCS([getcwd mkdir pow sqrt])
+
+
 AC_CONFIG_FILES([Makefile src/Makefile])
 
-AC_CHECK_HEADERS([stdlib.h])
+
+
 
 tldevel_check_f=$ac_abs_confdir/tldevel/README
 
@@ -18,6 +53,7 @@ if test "x${have_tldevel}" = xno; then
    echo "------------------------------------------"
    AC_MSG_ERROR([ASFSAF])
 fi
+
 
 
 
@@ -76,3 +112,10 @@ ac_configure_args="$ac_configure_args PACKAGE_VERSION=$PACKAGE_VERSION   PACKAGE
 AC_CONFIG_SUBDIRS([tldevel])
 
 AC_OUTPUT
+
+
+
+if test "$ac_cv_lib_gsl_gsl_integration_qag" = "no";then
+echo "     WARNING: GSL library was not found on your system."
+echo "     Programs: singleCellSim will not be compiled."
+fi

@@ -18,13 +18,6 @@
 #include <string.h>
 
 
-
-#include <gsl/gsl_errno.h>
-#include <gsl/gsl_sf_bessel.h>
-#include <gsl/gsl_integration.h>
-#include <gsl/gsl_multimin.h>
-#include <gsl/gsl_rng.h>
-#include <gsl/gsl_randist.h>
  
 #include "tldevel.h"
 

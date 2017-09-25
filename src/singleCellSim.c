@@ -1,5 +1,6 @@
 #include "scs.h"
 #include "outdir.h"	     
+#include "gigp.h"
 
 #define OPT_SAMPLE 1
 #define OPT_BOUNDARIES 2
@@ -10,17 +11,6 @@
 #define OPT_LOSS 7
 #define OPT_NUM_THREAD 8
 
-
-struct gigp_param{
-	double gamma;
-	double b;
-	double c;
-	double N;
-	double s;
-	double S;
-	double max_count;
-	double fit;
-};
 
 struct unique_transcript_count{
 	double* x;
@@ -67,7 +57,6 @@ struct unique_transcript_count* get_unique_transcript_vector(struct float_matrix
 
 int fit_model(struct shared_data* bsd);
 
-int fit_gigp_controller(struct unique_transcript_count* utc, struct gigp_param* gigp_param);
 
 int fit_gigp(struct gigp_param* gigp_param,double* fx_unique_transcript_count, int len);
 
@@ -81,8 +70,6 @@ int calculate_rel_frequencies(struct shared_data* bsd);
 
 int simulate_expression_table(struct shared_data* bsd);
 
-
-
 int write_fitted_param_to_file(struct gigp_param* gigp_param, char* filename);
 int read_fitted_param_from_file(struct gigp_param* gigp_param, char* filename);
 
@@ -92,27 +79,12 @@ int read_fitted_param_from_file(struct gigp_param* gigp_param, char* filename);
 struct shared_data* init_shared_data(struct parameters* param);
 void free_shared_data(struct shared_data* bsd);
 
-struct gigp_param* init_gigp_param(void);
-int copy_gigp_param(struct gigp_param* source, struct gigp_param* target);
-
-
-double give_me_sichel_p0(struct gigp_param* gigp_param ,double* p);
-int make_fake_expression_table(double CV,double* rel_abundance,char* outfile, int ncells, int depth,int num_genes,double loss);
-
 static int compare_double (const void * a, const void * b);
-
-
-//struct gigp_param* fit_gigp(struct gigp_param* gigp_param,double* fx_unique_transcript_count, int len);
-struct gigp_param* fit_exact_gigp(struct gigp_param* gigp_param,double* fx_unique_transcript_count, int len);
-double gigp_dist (double x, void * p);
 
 
 double* fill_fitted_curve(double* fit,int num,struct gigp_param* param );
 
 
-double sichel_function(const gsl_vector *v, void *params);
-
-double* read_count_distribution(int argc, char * argv[] ,int* max_transcript_frequency,int data_origin,char** sample_names,int num_samples);
 double* pick_abundances(struct gigp_param* gigp_param, double* random, double* abundances,int outer_low,int outer_high,double inner_low,double inner_high);
 
 int main (int argc, char * argv[])
@@ -129,20 +101,10 @@ int main (int argc, char * argv[])
 	param->simulated_read_depth = 80000;
 	param->CV = 0.75;
 	
-	FILE* file = 0;
-	int i,c,f,g;
-	char* tmp = 0;
-	char* outfile_name = 0;
-	int count;
-        int help = 0;
+	int c;
 	int quiet = 0;
-	char* outfile = 0;
-	double loss = 0.00;
-	double sum;
+	int help = 0;
 	
-	int data_origin = 0;
-	
-	unsigned int seed = (unsigned int) (time(NULL) * ( 42));
 	
 	while (1){
 		static struct option long_options[] ={
@@ -152,7 +114,7 @@ int main (int argc, char * argv[])
 			{"nthread",required_argument,0,OPT_NUM_THREAD},			
 			{"ncell",required_argument,0,OPT_NUMCELLS},
 			{"depth",required_argument,0,OPT_DEPTH},
-			{"loss",required_argument,0,OPT_LOSS },
+			//{"loss",required_argument,0,OPT_LOSS },
 			{"CV",required_argument,0,OPT_CV},
 			{"quiet",0,0,'q'},
 			{"help",0,0,'h'},
@@ -169,9 +131,9 @@ int main (int argc, char * argv[])
 		switch(c) {
 		case 0:
 			break;
-		case OPT_LOSS:
+			/*case OPT_LOSS:
 			loss = atof (optarg);
-			break;
+			break;*/
 		case OPT_CV:
 			param->CV = atof(optarg);
 			break;
@@ -234,10 +196,8 @@ int run_scs(struct parameters* param)
 {
 	struct shared_data* bsd = NULL;
 	struct float_matrix* m = NULL;
-	struct unique_transcript_count* utc = NULL;
-
-	float* uniq_transcript_vector = NULL;	
-	char buffer[BUFFER_LEN];	
+	
+        char buffer[BUFFER_LEN];	
 	/* allocate shared data  */
 	RUNP(bsd = init_shared_data(param));
 	
@@ -268,7 +228,7 @@ int run_scs(struct parameters* param)
 	snprintf(buffer, BUFFER_LEN, "%lf %lf %lf",round(bsd->gigp_param_best->gamma*100000)/100000.0f, round(bsd->gigp_param_best->b*100000)/100000.0f,round(bsd->gigp_param_best->c*100000)/100000.0f);
 	RUN_CHECKPOINT(MAIN_CHECK,calculate_rel_frequencies(bsd),buffer);
 
-	snprintf(buffer, BUFFER_LEN, "%lf %lf %lf",round(bsd->gigp_param_best->gamma*100000)/100000.0f, round(bsd->gigp_param_best->b*100000)/100000.0f,round(bsd->gigp_param_best->c*100000)/100000.0f);
+	snprintf(buffer, BUFFER_LEN, "%lf %lf %lf %d",round(bsd->gigp_param_best->gamma*100000)/100000.0f, round(bsd->gigp_param_best->b*100000)/100000.0f,round(bsd->gigp_param_best->c*100000)/100000.0f, bsd->param->simulated_read_depth);
 
 	RUN_CHECKPOINT(MAIN_CHECK,simulate_expression_table(bsd),buffer);
 
@@ -305,10 +265,7 @@ int simulate_expression_table(struct shared_data* bsd)
 
 	snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.txt");
 	RUN(read_fitted_param_from_file( bsd->gigp_param_best,buffer));
-
-	fprintf(stderr,"S:%f\n", bsd->gigp_param_best->S);
-
-
+	
 	bsd->param->num_genes = (int)(bsd->gigp_param_best->S +1);
 
 
@@ -360,20 +317,19 @@ int simulate_expression_table(struct shared_data* bsd)
 
 		
 		for(j = 0;j < simulated_read_depth;j++){
-			m->matrix[i][(int)gsl_ran_discrete(rfff, sample_abundances)] += 1;
+			m->matrix[(int)gsl_ran_discrete(rfff, sample_abundances)][i] += 1;
 		}
 		gsl_ran_discrete_free(sample_abundances);
 	}
 	
 	//random deletion...	
 	/*for(i = 0; i < ncells;i++){
-		
 		for(j = 0; j < num_genes;j++){
 			if(gsl_rng_uniform_pos(rfff) < loss){
 				table[i][j] = 0;
 			}
 		}
-		}*/
+	}*/
 	
 	
 	snprintf(buffer, BUFFER_LEN, "%s/%s/extable_%d_%d_CV%f.csv",bsd->param->outdir,OUTDIR_RESULTS,num_cells, simulated_read_depth,CV);
@@ -412,8 +368,7 @@ int calculate_rel_frequencies(struct shared_data* bsd)
 
 	snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.txt");
 	RUN(read_fitted_param_from_file( bsd->gigp_param_best,buffer));
-
-	fprintf(stderr,"S:%f\n", bsd->gigp_param_best->S);
+	
 	MMALLOC(rel_abundance, sizeof(double) * (int) (bsd->gigp_param_best->S+1));
 	MMALLOC(observed, sizeof(double) * (int)(bsd->gigp_param_best->S+1));
 
@@ -432,7 +387,7 @@ int calculate_rel_frequencies(struct shared_data* bsd)
 	snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_rel_abundances.txt");
 
 	RUNP(out_ptr = fopen(buffer, "w"));
-	for(i = 0; i <(int) bsd->gigp_param_best->S;i++){
+	for(i = 0; i <(int)(bsd->gigp_param_best->S+1);i++){
 		fprintf(out_ptr,"%10.10e\n",  rel_abundance[i]  );
 	}
 	fclose(out_ptr);
@@ -462,18 +417,18 @@ int print_fit(struct shared_data* bsd)
 	int i;
 	
 	ASSERT(bsd != NULL,"No shared memory.");
-
+	
 	snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.txt");
 	
 	RUN(read_fitted_param_from_file(bsd->gigp_param_best,buffer));
 	
 	MMALLOC(fitted,sizeof(double) * bsd->utc->max);
 	fitted =  fill_fitted_curve(fitted ,bsd->utc->max, bsd->gigp_param_best);
-
+	
 	/* print fitted file...  */
 	snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_fit.csv");
 	LOG_MSG("REading from: %s",buffer);
-
+	
 	RUNP(out_ptr = fopen(buffer, "w" ));
 	for(i = 1; i <  bsd->utc->max;i++){
 		if( bsd->utc->x[i]){
@@ -481,13 +436,12 @@ int print_fit(struct shared_data* bsd)
 		}
 	}
 	fclose(out_ptr);
-
-
+	
 	snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_growth_curve.csv");
 	LOG_MSG("Writing to: %s",buffer);
 	RUNP(out_ptr = fopen(buffer, "w" ));
 	sum = bsd->gigp_param_best->N;
-		
+	
 	for(i = 1000000; i <= 50000000;i+= 1000000){
 		if(i < sum && (double)(i + 1000000.0) > sum){
 			bsd->gigp_param_best->N = sum;
@@ -496,13 +450,13 @@ int print_fit(struct shared_data* bsd)
 		bsd->gigp_param_best->N = i;
 		fprintf(out_ptr,"%d,%d,%d\n",i, (int)(bsd->gigp_param_best->S * ( 1.0 - give_me_sichel_p0(bsd->gigp_param_best,bsd->utc->x))),(int) bsd->gigp_param_best->S);
 	}
-
+	
 	fclose(out_ptr);
 	bsd->gigp_param_best->N = sum;
-
+	
 	snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.txt");
 	RUN(write_fitted_param_to_file( bsd->gigp_param_best,buffer));
-
+	
         MFREE(fitted);
 	return OK;
 ERROR:
@@ -518,7 +472,7 @@ int set_initial_guess(struct shared_data* bsd)
 	int i;
 	
 	ASSERT(bsd != NULL,"No shared data.");
-
+	
 	ptr = bsd->gigp_param_initial_guess;
 	
 	ptr->gamma = -2.0;
@@ -534,27 +488,25 @@ int set_initial_guess(struct shared_data* bsd)
 		ptr->N += i * bsd->utc->x[i];
 		ptr->s +=  bsd->utc->x[i];
 	}
-
+	
 	return OK;
 ERROR:
 	return FAIL;
 }
-
 
 struct unique_transcript_count* get_unique_transcript_vector(struct float_matrix* m, int column)
 {     
 	struct unique_transcript_count* utc = NULL;
 	int i,c; 
 	ASSERT(m != NULL,"Count matrix is NULL.");
-
+	
 	ASSERT(column < m->nrow,"Count matrix has %d columns but you ask for %d.", m->nrow,column );
-
+	
 	MMALLOC(utc, sizeof(struct unique_transcript_count));
 	utc->x = NULL;
 	utc->alloc_size = 10000;
 	utc->max = 0;
 	
-
 	MMALLOC(utc->x, sizeof(double)* utc->alloc_size);
 	for(i = 0; i < utc->alloc_size;i++){
 		utc->x[i] = 0.0;
@@ -582,9 +534,9 @@ ERROR:
 int fit_model(struct  shared_data* bsd)
 {
 	char buffer[BUFFER_LEN];
-
+	
 	struct gigp_param* gigp_param = NULL; 
-
+	
 	struct thread_data** td = NULL;
 	
 	int alloc_td = 1000;
@@ -592,21 +544,20 @@ int fit_model(struct  shared_data* bsd)
 	int step = 3;
 	double min_gamma = -3.0;
 	double max_gamma = 3.0;
-
+	
 	double min_b = 0.1;
 	double max_b = 0.4;
-
+	
 	double min_c = 0.01;
 	double max_c = 0.04;
-
+	
 	
 	int status; 
 	int i,j,c,g;
 	
+	g = 0;
 	LOG_MSG("Start Estimating Parameters.");
 	MMALLOC(td, sizeof(struct thread_data*) * alloc_td);
-
-	g = 0;
 	
 	for(i = 0 ; i < step; i++){
 		for(j = 0; j < step; j++){
@@ -619,7 +570,7 @@ int fit_model(struct  shared_data* bsd)
 				td[g]->try_gamma = min_gamma + ((max_gamma -min_gamma  )/(double)step *(double)i);
 				td[g]->try_b  = min_b + ((max_b -min_b  )/(double)step *(double)j);
 				td[g]->try_c  = min_c + ((max_c -min_c  )/(double)step *(double)c);
-
+				
 				RUNP(gigp_param = init_gigp_param());
 				td[g]->gigp_param = gigp_param;
 				gigp_param = NULL;
@@ -632,8 +583,6 @@ int fit_model(struct  shared_data* bsd)
 			}
 		}
 	}
-
-       
 	for(i = 0; i < g;i++){
 		td[i]->thread_id = i;
 		if((status = thr_pool_queue(bsd->pool,do_fit_model,td[i])) == -1) fprintf(stderr,"Adding job to queue failed.");				
@@ -642,12 +591,10 @@ int fit_model(struct  shared_data* bsd)
 	
 	
 	LOG_MSG("Done..");
-
+	
 	/* Write parameters to output file... */
 	snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.txt");
 	RUN(write_fitted_param_to_file( bsd->gigp_param_best,buffer));
-
-
 	for(i = 0; i < g;i++){
 		MFREE(td[i]->gigp_param);
 		MFREE(td[i]);
@@ -675,8 +622,7 @@ int write_fitted_param_to_file(struct gigp_param* gigp_param, char* filename)
 	fprintf(out_ptr,"%f\ts\n", gigp_param->s);
 	fprintf(out_ptr,"%f\tS\n", gigp_param->S );
 	fprintf(out_ptr,"%f\tMax_transcript_count\n", gigp_param->max_count -1 );
-	fprintf(out_ptr,"%f\tFit\n", gigp_param->fit);
-		
+	fprintf(out_ptr,"%f\tFit\n", gigp_param->fit);		
 	fclose(out_ptr);
 	return OK;
 ERROR:
@@ -688,9 +634,9 @@ int read_fitted_param_from_file(struct gigp_param* gigp_param, char* filename)
 	FILE* out_ptr = NULL;
 	
 	LOG_MSG("Reading from: %s",filename);
-
+	
 	RUNP(out_ptr = fopen(filename, "r" ));
-
+	
 	if(fscanf(out_ptr,"%lg\tgamma\n",  &gigp_param->gamma )!= 1){
 		ERROR_MSG("could not read gamma from %s.",filename);
 	}
@@ -699,32 +645,25 @@ int read_fitted_param_from_file(struct gigp_param* gigp_param, char* filename)
 	}
 	if(fscanf(out_ptr,"%lg\tc\n",  &gigp_param->c )!= 1){
 		ERROR_MSG("could not read c from %s.",filename);
-	}
-	
+	}	
 	if(fscanf(out_ptr,"%lf\tN\n", &gigp_param->N )!= 1){
 		ERROR_MSG("could not read N from %s.",filename);
-	}
-	
+	}	
 	if(fscanf(out_ptr,"%lf\ts\n",  &gigp_param->s)!= 1){
 		ERROR_MSG("could not read s from %s.",filename);
 	}
-	
 	if(fscanf(out_ptr,"%lf\tS\n", &gigp_param->S )!= 1){
 		ERROR_MSG("could not read S from %s.",filename);
 	}
-	
 	if(fscanf(out_ptr,"%lf\tMax_transcript_count\n", &gigp_param->max_count)!= 1){
 		ERROR_MSG("could not read max count from %s.",filename);
 	}
-	
 	if(fscanf(out_ptr,"%lf\tFit\n", &gigp_param->fit)!= 1){
 		ERROR_MSG("could not read fir from %s.",filename);
 	}
-	
 	fclose(out_ptr);
-	
+		
 	gigp_param->max_count++;
-
 	return OK;
 ERROR:
 	return FAIL; 
@@ -735,8 +674,6 @@ void* do_fit_model(void *threadarg)
 {
 	struct thread_data *data = NULL;     
 	struct gigp_param* gigp = NULL;
-	int id;
-	int i;
 	
 	data = (struct thread_data *) threadarg;
 	
@@ -883,669 +820,6 @@ ERROR:
 	return FAIL;
 }
 
-
-int  make_fake_expression_table(double CV,double* rel_abundance,char* outfile, int ncells, int depth,int num_genes,double loss)
-{
-	FILE* file = 0;
-	int i,j;
-	gsl_rng_env_setup();
-	const gsl_rng_type *T = gsl_rng_default;
-	gsl_rng *rfff = gsl_rng_alloc (T);
-	
-	double* cell_abundance = 0;
-	MMALLOC(cell_abundance, sizeof(double) * num_genes);
-	
-	char* outfile_name = 0;
-	
-	MMALLOC(outfile_name, sizeof(char) *(strlen(outfile) + 50 ));
-	
-	
-	int** table = 0;
-	MMALLOC(table, sizeof(int*) * ncells);
-	for(i = 0; i < ncells;i++){
-		table[i] = 0;
-		MMALLOC(table[i], sizeof(int) * num_genes );
-		for(j = 0; j < num_genes;j++){
-			table[i][j] = 0;
-		}
-	}
-	
-	
-	for(i = 0; i < ncells;i++){
-		
-		for(j = 0; j < num_genes;j++){
-			cell_abundance[j] = rel_abundance[j] + gsl_ran_gaussian (rfff,  rel_abundance[j] * CV);
-			if(cell_abundance[j] < 0){
-				cell_abundance[j] = 0.0;
-			//	fprintf(stderr,"%f	%f\n",rel_abundance[j],cell_abundance[j]);
-			}
-		}
-		gsl_ran_discrete_t *sample_abundances = gsl_ran_discrete_preproc (num_genes, cell_abundance);
-
-		
-		for(j = 0;j < depth;j++){
-			table[i][(int)gsl_ran_discrete(rfff, sample_abundances)] += 1;
-		}
-		
-		gsl_ran_discrete_free(sample_abundances);
-	}
-	
-	//random deletion...
-	
-	for(i = 0; i < ncells;i++){
-		
-		for(j = 0; j < num_genes;j++){
-			if(gsl_rng_uniform_pos(rfff) < loss){
-				table[i][j] = 0;
-			}
-		}
-	}
-	
-	
-	sprintf (outfile_name, "%s_extable_%d_%d_CV%f_loss%f.csv",outfile,ncells,depth,CV,loss);
-	
-	if (!(file = fopen(outfile_name , "w" ))){
-		fprintf(stderr,"Cannot open output file '%s'\n",outfile_name);
-		exit(EXIT_FAILURE );
-	}
-	
-	///table[i] = malloc(sizeof(int) * num_genes );
-	for(j = 0; j < num_genes;j++){
-		for(i = 0; i < ncells;i++){
-			fprintf(file,"%d\t",table[i][j] );
-		}
-		fprintf(file,"\n");
-	}
-
-	fclose(file);
-	for(i = 0; i < ncells;i++){
-		MFREE(table[i]);// = malloc(sizeof(int) * num_genes );
-	}
-	gsl_rng_free(rfff);
-	MFREE(table);
-	MFREE(cell_abundance);
-	MFREE(outfile_name);
-	return OK;
-ERROR:
-	return FAIL;
-}
-
-
-double* read_count_distribution(int argc, char * argv[] ,int* max_transcript_frequency,int data_origin,char** sample_names,int num_samples)
-{
-	struct tome_data* td = 0;
-	FILE* file = 0;
-	int numseq,i,c,gzipped = 0;
-	char* column_spec = 0;
-	
-	
-	char* db_file = 0;
-	char* input_file = 0;
-	
-	/*if(num_samples > 1){
-		fprintf(stderr,"Warning: I will only use the first sample... \n");
-	}
-	
-	if(!outfile){
-		fprintf(stderr,"You need to specify an output file suffix with -o option...\n");
-		exit(EXIT_FAILURE);
-	}*/
-	
-	if(data_origin == 1){
-		
-		db_file = argv[optind++];
-		if(!db_file){
-			fprintf(stderr,"No database file...\n");
-			exit(EXIT_FAILURE);
-		}
-		
-		
-		input_file = argv[optind++];
-		if(!input_file){
-			fprintf(stderr,"No input file...\n");
-			exit(EXIT_FAILURE);
-		}
-		
-	}else if(data_origin == 3){
-		db_file = argv[optind++];
-		if(!db_file){
-			fprintf(stderr,"No database file...\n");
-			exit(EXIT_FAILURE);
-		}
-		input_file = argv[optind++];
-		if(!input_file){
-			fprintf(stderr,"No input file...\n");
-			exit(EXIT_FAILURE);
-		}
-	}else{
-		
-		fprintf(stderr,"No input method specified.\n");
-		exit(EXIT_SUCCESS);
-	}
-	
-	
-	
-	
-	double* fx_unique_transcript_count = 0;
-	
-	*max_transcript_frequency = 0;
-	
-	int t_count_size = 10000;
-	MMALLOC(fx_unique_transcript_count, sizeof(double)* t_count_size);
-	for(i= 0; i < t_count_size;i++){
-		fx_unique_transcript_count[i] = 0.0;
-	}
-	//
-	//sample = XXXX; which sample to select
-	//
-	if(input_file){
-		/*	file = open_track(input_file, &gzipped);
-		column_spec = get_column_specs_based_on_file_suffix(input_file);
-		while ((numseq = read_data_chunk(db,td,column_spec,file))) {
-			td->numseq = numseq;
-			for(i = 0; i < td->numseq;i++){
-				if(td->gc[i]->count != 0.0){
-					while( (int) td->gc[i]->count >= t_count_size){
-							
-						fx_unique_transcript_count = realloc(fx_unique_transcript_count, sizeof(double)* t_count_size *2);
-						for(c = t_count_size;c < t_count_size*2 ;  c++ ){
-							fx_unique_transcript_count[c] = 0.0;
-						}
-						t_count_size = t_count_size *2;
-					}
-					if(*max_transcript_frequency < (int) td->gc[i]->count ){
-						*max_transcript_frequency = (int) td->gc[i]->count ;
-					}
-					fx_unique_transcript_count[ (int) td->gc[i]->count ] += 1.0;
-				}
-			}
-			}*/
-		
-	}
-	//close_track(file, gzipped);
-	//free_tome_data(td);
-	
-	////
-	//	Step one: estimation on GIGP parameters using Nelder & Mead simplex method....
-	/////
-	
-	
-	*max_transcript_frequency = *max_transcript_frequency + 1;
-	return fx_unique_transcript_count;
-ERROR:
-	return NULL;
-}
-
-
-int fit_gigp_controller(struct unique_transcript_count* utc, struct gigp_param* gigp_param)
-{
-	
-	struct gigp_param* gigp_param_best = NULL;
-	int i;	
-
-	/* set initial guess...  */
-	gigp_param->gamma = -2.0;
-	gigp_param->b = 1.0;
-	gigp_param->c = 0.1;
-	gigp_param->N = 0.0;
-	gigp_param->s = 0.0;
-		
-	gigp_param->S = 0.0;
-	gigp_param->fit = DBL_MAX;
-	gigp_param->max_count = utc->max;
-		
-	for(i = 0; i < utc->max;i++){
-		gigp_param->N += i * utc->x[i];
-		gigp_param->s +=  utc->x[i];
-	}
-
-	/* allov best fit  */
-	MMALLOC(gigp_param_best, sizeof(struct gigp_param));
-	gigp_param_best->gamma = -2.0;
-	gigp_param_best->b = 1.0;
-	gigp_param_best->c = 0.1;
-	gigp_param_best->N = gigp_param->N;
-	gigp_param_best->s = gigp_param->s;
-	gigp_param_best->S = gigp_param->S;
-	gigp_param_best->fit = DBL_MAX;
-	gigp_param_best->max_count  = gigp_param->max_count ;
-	/* fit model  */
-	RUN(fit_gigp(gigp_param,utc->x, utc->max));
-	
-	if(gigp_param->fit < gigp_param_best->fit ){
-		fprintf(stderr,"%f	%f	%f	N:%f	s:%f	S:%f	%f\n",gigp_param->gamma,gigp_param->b,gigp_param->c,gigp_param->N,gigp_param->s,gigp_param->S ,gigp_param->fit);
-		gigp_param_best->fit = gigp_param->fit;
-		gigp_param_best->gamma = gigp_param->gamma;
-		gigp_param_best->b = gigp_param->b;
-		gigp_param_best->c =  gigp_param->c;
-	}
-	/* try a couple of times more with differeny starting points...  */
-	for(i = 1; i < 20;i++){
-		gigp_param->gamma = 1 - (double) i * 0.2;
-		gigp_param->b = 0.1 + (double) i * 0.01;
-		gigp_param->c = 0.01 +  (double) i * 0.001;
-		
-		RUN(fit_gigp(gigp_param,utc->x, utc->max));
-		fprintf(stderr,"i:%d	%f	%f	%f	N:%f	s:%f	S:%f	%f\n",i,gigp_param->gamma,gigp_param->b,gigp_param->c,gigp_param->N,gigp_param->s,gigp_param->S ,gigp_param->fit);
-
-		if(gigp_param->fit < gigp_param_best->fit ){
-			fprintf(stderr,"%f	%f	%f	N:%f	s:%f	S:%f	%f\n",gigp_param->gamma,gigp_param->b,gigp_param->c,gigp_param->N,gigp_param->s,gigp_param->S ,gigp_param->fit);
-			gigp_param_best->fit = gigp_param->fit;
-			gigp_param_best->gamma = gigp_param->gamma;
-			gigp_param_best->b = gigp_param->b;
-			gigp_param_best->c =  gigp_param->c;
-		}
-	}
-	/* copy estimated parameters back  */
-	gigp_param->gamma = gigp_param_best->gamma;
-	gigp_param->b = gigp_param_best->b;
-	gigp_param->c = gigp_param_best->c;
-	gigp_param->N = gigp_param_best->N;
-	gigp_param->s = gigp_param_best->s;
-	
-	gigp_param->S = gigp_param_best->S;
-	gigp_param->fit = gigp_param_best->fit;
-	gigp_param->max_count = gigp_param_best->max_count;
-
-	/* free best struct..  */
-	MFREE(gigp_param_best);
-
-	return OK;
-ERROR:
-	if(gigp_param_best){
-	  	MFREE(gigp_param_best);
-	}
-	return FAIL;
-}
-
-
-
-
-int fit_gigp(struct gigp_param* gigp_param,double* fx_unique_transcript_count, int len)
-{
-	//double par[5] = {1.0, 2.0, 10.0, 20.0, 30.0};
-	
-	const gsl_multimin_fminimizer_type *T =
-	gsl_multimin_fminimizer_nmsimplex2rand;
-	gsl_multimin_fminimizer *s = NULL;
-	gsl_vector *ss, *x;
-	gsl_multimin_function minex_func;
-	
-	size_t iter = 0;
-	int status;
-	double size;
-	
-	
-	double* par = 0;
-	MMALLOC(par,sizeof(double) * (len + 3));
-	
-	par[0] = gigp_param->N;
-	par[1] = gigp_param->s;
-	par[2] = gigp_param->max_count;
-	for(status = 0;status < len;status++){ /*  */
-		par[3+status] = fx_unique_transcript_count[status];
-	}	
-	/* Starting point */
-	//x = gsl_vector_alloc (2);
-	//gsl_vector_set (x, 0, 5.0);
-	//gsl_vector_set (x, 1, 7.0);
-	
-
-	x = gsl_vector_alloc (3);
-	
-	gsl_vector_set (x, 0,  gigp_param->gamma );
-	gsl_vector_set (x, 1, gigp_param->b);
-	gsl_vector_set (x, 2, gigp_param->c);
-	//gsl_vector_set (x, 3, gigp_param->N);
-	//gsl_vector_set (x, 4, gigp_param->s);
-	//gsl_vector_set (x, 5, gigp_param->max_count);
-	
-	
-
-	
-	/* Set initial step sizes to 1 */
-	ss = gsl_vector_alloc (3);
-	gsl_vector_set (ss, 0,gigp_param->gamma /1.5);
-	gsl_vector_set (ss, 1, gigp_param->b/1.5);
-	gsl_vector_set (ss, 2, gigp_param->c/1.5);
-
-	
-	//gsl_vector_set_all (ss, 1e-4);
-	
-	/* Initialize method and iterate */
-	minex_func.n = 3;
-	minex_func.f = sichel_function;
-	minex_func.params = par;
-	
-	s = gsl_multimin_fminimizer_alloc (T, 3);
-	gsl_multimin_fminimizer_set (s, &minex_func, x, ss);
-	
-	do
-	{
-		iter++;
-		status = gsl_multimin_fminimizer_iterate(s);
-		
-		if (status)
-			break;
-		
-		size = gsl_multimin_fminimizer_size (s);
-		status = gsl_multimin_test_size (size, 1e-9);
-		
-		/*if (status == GSL_SUCCESS)
-		{
-			fprintf (stderr,"converged to minimum at\n");
-		}
-		
-		fprintf (stderr,"%d\t%10.3e\t%10.3e\t%10.3e\t\tf() = %7.3f size = %.3f\n",
-		        iter,
-		        gsl_vector_get (s->x, 0),
-		        gsl_vector_get (s->x, 1),
-		         gsl_vector_get (s->x, 2),
-		        s->fval, size);*/
-	}
-	while (status == GSL_CONTINUE && iter < 100);
-	
-	gigp_param->gamma = gsl_vector_get (s->x, 0);
-	gigp_param->b = gsl_vector_get (s->x, 1);
-	gigp_param->c = gsl_vector_get (s->x, 2);
-	gigp_param->fit = s->fval;
-	
-	
-
-	
-	gsl_vector_free(x);
-	gsl_vector_free(ss);
-	gsl_multimin_fminimizer_free (s);
-        
-	return OK;
-ERROR:
-	return FAIL;
-}
-
-
-
-
-
-double give_me_sichel_p0(struct gigp_param* gigp_param,double* p )
-{
-	
-	double gamma = gigp_param->gamma;
-	double b = gigp_param->b;
-	double c = gigp_param->c;
-	double N = gigp_param->N;
-	int max_observed = gigp_param->max_count;
-	int status;
-	
-	gsl_sf_result result;
-	
-	double alpha = b*sqrt(1.0 + c *N );
-	double beta = (b*c*N)/(2.0 * sqrt(1.0 + c *N ));
-	
-	double sum = 0.0;
-		
-	double res[3];
-	double bessel1 = 0.0;
-	double bessel2 = 0.0;
-	
-	double x = 0;
-	double y = 0;
-	
-	status = gsl_sf_bessel_Kn_e( gamma, sqrt( pow(alpha,2.0) - 2.0* alpha*beta )   ,  &result);
-	
-	if (status == GSL_SUCCESS) {
-		//printf("%f	%f\n",i,result.val);
-		bessel1 =  result.val;
-	}
-	
-	status = gsl_sf_bessel_Kn_e( gamma + x,  alpha   ,  &result);
-	
-	if (status == GSL_SUCCESS) {
-		//printf("%f	%f\n",i,result.val);
-		bessel2 =  result.val;
-	}
-	
-	
-	
-	
-	y = pow((  sqrt( pow(alpha,2.0) - 2.0* alpha*beta  )   / alpha  ),gamma) * 1.0 / bessel1 * (pow(beta,x)/  1.0 )  * bessel2;
-	sum += y;
-	
-	res[0] = y;
-	
-	x = 1.0 ;
-	status = gsl_sf_bessel_Kn_e( gamma, sqrt( pow(alpha,2.0) - 2.0* alpha*beta )   ,  &result);
-	if (status == GSL_SUCCESS) {
-		bessel1 =  result.val;
-	}
-	
-	status = gsl_sf_bessel_Kn_e( gamma + x,  alpha   ,  &result);
-	if (status == GSL_SUCCESS) {
-		bessel2 =  result.val;
-	}
-	
-	
-	
-	
-	y = pow ((  sqrt( pow(alpha,2.0) - 2.0* alpha*beta  )   / alpha  ),gamma) * 1.0 / bessel1 * (pow(beta,x)/  1.0 )  * bessel2;
-	//if(p[(int)x]){
-		sum += y;
-	//}
-	
-	res[1] = y;
-	
-	for(x = 2.0; x < max_observed;x+=1.0){
-		y = (2.0*beta)/ alpha * ((x + gamma -1.0)/ x) * res[1] + (pow(beta,2.0)/ ( x *(x-1.0) )  )* res[0];
-		//if(p[(int)x]){
-			sum += y;
-		//}
-		
-		res[0] = res[1];
-		res[1] = y;
-		
-		
-	}
-	x = 0;
-	
-	status = gsl_sf_bessel_Kn_e( gamma, sqrt( pow(alpha,2.0) - 2.0* alpha*beta )   ,  &result);
-	
-	if (status == GSL_SUCCESS) {
-		bessel1 =  result.val;
-	}
-	
-	status = gsl_sf_bessel_Kn_e( gamma + x,  alpha   ,  &result);
-	
-	if (status == GSL_SUCCESS) {
-		bessel2 =  result.val;
-	}
-	
-	
-	
-	
-	y = pow((  sqrt( pow(alpha,2.0) - 2.0* alpha*beta  )   / alpha  ),gamma) * 1.0 / bessel1 * (pow(beta,x)/  1.0 )  * bessel2;
-	
-	return y/sum;
-}
-
-
-double sichel_function(const gsl_vector *v, void *params)
-{
-	
-	double *p = (double *)params;
-	double gamma,b,c,N,s,max_observed, log_likelihood ;
-	gamma = gsl_vector_get(v, 0);
-	b = gsl_vector_get(v, 1);
-	c = gsl_vector_get(v, 2);
-	N = p[0];// gsl_vector_get(v, 3);
-	s = p[1]; //gsl_vector_get(v, 4);
-	max_observed = p[2];//sl_vector_get(v, 5);
-	
-	
-	double sum = 0.0;
-	
-	gsl_sf_result result;
-
-	log_likelihood = 0.0;
-	int status = 0;
-	
-	double res[3];
-	if(b < 0.0 ){
-		return DBL_MAX;
-		b = DBL_MIN;
-	}
-	
-	if(c < 0.0){
-		return DBL_MAX;
-		c = DBL_MIN;
-	}
-	
-	if(c > b){
-		return DBL_MAX;
-	}
-	
-	
-	double alpha = b*sqrt(1.0 + c *N );
-	double beta = (b*c*N)/(2.0 * sqrt(1.0 + c *N ));
-	
-		
-	double bessel1 = 0;
-	double bessel2 = 0;
-	
-	double x = 0;
-	double y = 0;
-	
-	status = gsl_sf_bessel_Kn_e( gamma, sqrt( pow(alpha,2.0) - 2.0* alpha*beta )   ,  &result);
-	
-	if (status == GSL_SUCCESS) {
-		//printf("%f	%f\n",i,result.val);
-		bessel1 =  result.val;
-	}else{
-		ERROR_MSG("Blah");
-	}
-	
-	status = gsl_sf_bessel_Kn_e( gamma + x,  alpha   ,  &result);
-	
-	if (status == GSL_SUCCESS) {
-		//printf("%f	%f\n",i,result.val);
-		bessel2 =  result.val;
-	}else{
-		ERROR_MSG("Blah");
-	}
-	
-	
-	
-	
-	y = pow((  sqrt( pow(alpha,2.0) - 2.0* alpha*beta  )   / alpha  ),gamma) * 1.0 / bessel1 * (pow(beta,x)/  1.0 )  * bessel2;
-	sum += y;
-	
-	res[0] = y;
-	
-	x = 1.0 ;
-	status = gsl_sf_bessel_Kn_e( gamma, sqrt( pow(alpha,2.0) - 2.0* alpha*beta )   ,  &result);
-	if (status == GSL_SUCCESS) {
-		bessel1 =  result.val;
-	}else{
-		ERROR_MSG("Blah");
-	}
-	
-	status = gsl_sf_bessel_Kn_e( gamma + x,  alpha   ,  &result);
-	if (status == GSL_SUCCESS) {
-		bessel2 =  result.val;
-	}else{
-		ERROR_MSG("Blah");
-	}
-	
-	
-	
-	
-	y = pow ((  sqrt( pow(alpha,2.0) - 2.0* alpha*beta  )   / alpha  ),gamma) * 1.0 / bessel1 * (pow(beta,x)/  1.0 )  * bessel2;
-	//if(p[(int)x+3]){
-		sum += y;
-	//}
-	
-	res[1] = y;
-	
-	for(x = 2.0; x < max_observed;x+=1.0){
-		y = (2.0*beta)/ alpha * ((x + gamma -1.0)/ x) * res[1] + (pow(beta,2.0)/ ( x *(x-1.0) )  )* res[0];
-		//if(p[(int)x+3]){
-			sum += y;
-		//}
-		
-		res[0] = res[1];
-		res[1] = y;
-		
-		
-	}
-	x = 0;
-	
-	status = gsl_sf_bessel_Kn_e( gamma, sqrt( pow(alpha,2.0) - 2.0* alpha*beta )   ,  &result);
-	
-	if (status == GSL_SUCCESS) {
-		bessel1 =  result.val;
-	}else{
-		ERROR_MSG("Blah");
-	}
-	status = gsl_sf_bessel_Kn_e( gamma + x,  alpha   ,  &result);
-	
-	if (status == GSL_SUCCESS) {
-		bessel2 =  result.val;
-	}else{
-		ERROR_MSG("Blah");
-	}
-	
-	
-	
-	
-	y = pow((  sqrt( pow(alpha,2.0) - 2.0* alpha*beta  )   / alpha  ),gamma) * 1.0 / bessel1 * (pow(beta,x)/  1.0 )  * bessel2;
-	log_likelihood = log_likelihood - s * log(1.0 -y/sum);
-	res[0] = y;
-	
-	x = 1.0 ;
-	status = gsl_sf_bessel_Kn_e( gamma, sqrt( pow(alpha,2.0) - 2.0* alpha*beta )   ,  &result);
-	if (status == GSL_SUCCESS) {
-		bessel1 =  result.val;
-	}else{
-		ERROR_MSG("Blah");
-	}
-	
-	status = gsl_sf_bessel_Kn_e( gamma + x,  alpha   ,  &result);
-	if (status == GSL_SUCCESS) {
-		bessel2 =  result.val;
-	}else{
-		ERROR_MSG("Blah");
-	}
-	
-	
-	
-	y = pow ((  sqrt( pow(alpha,2.0) - 2.0* alpha*beta  )   / alpha  ),gamma) * 1.0 / bessel1 * (pow(beta,x)/  1.0 )  * bessel2;
-	if(p[(int)x+3]){
-		log_likelihood += p[(int)x+3] *log(y/sum);
-	}
-	res[1] = y;
-	
-	for(x = 2.0; x < max_observed;x+=1.0){
-		y = (2.0*beta)/ alpha * ((x + gamma -1.0)/ x) * res[1] + (pow(beta,2.0)/ ( x *(x-1.0) )  )* res[0];
-		if(p[(int)x+3]){
-			log_likelihood += p[(int)x+3] *log(y/sum);
-		}
-		
-		res[0] = res[1];
-		res[1] = y;
-	}
-	
-	
-	//fprintf (stderr,"%10.3e\t%10.3e\t%10.3e	%f\n",gamma,alpha,beta,log_likelihood);
-
-	if(isnan(log_likelihood)){
-		return DBL_MAX;
-	}
-	
-	return -1.0 * log_likelihood;
-ERROR:
-	return -1;
-}
-
-
-
 double* fill_fitted_curve(double* fit,int num,struct gigp_param* param )
 {
 	double alpha = param->b*sqrt(1.0 + param->c *param->N );
@@ -1638,31 +912,6 @@ double* fill_fitted_curve(double* fit,int num,struct gigp_param* param )
 }
 
 
-double gigp_dist (double x, void * p)
-{
-	struct gigp_param * params = (struct gigp_param *)p;
-	double gamma = (params->gamma);
-	double b = (params->b);
-	double c = (params->c);
-	
-	int status = 0;
-	double bessel1 = 0.0;
-	double y = 0.0;
-	gsl_sf_result result;
-	
-	status = gsl_sf_bessel_Kn_e( gamma, b    ,  &result);
-	
-	if (status == GSL_SUCCESS) {
-		//printf("%f	%f\n",i,result.val);
-		bessel1 =  result.val;
-	}
-	y = (  pow(2.0/(b*c),gamma) /(2.0 * bessel1)  ) * pow(x,gamma-1.0) * exp(  -1.0*(x/c) -((b*b*c)/ (4.0*x)) );
-	
-	
-	
-	return y;
-}
-
 static int compare_double (const void * a, const void * b)
 {
 	if (*(double*)a > *(double*)b) return 1;
@@ -1754,9 +1003,3 @@ double* pick_abundances(struct gigp_param* gigp_param, double* random, double* a
 	
 	return  abundances;
 }
-
-
-
-
-
-

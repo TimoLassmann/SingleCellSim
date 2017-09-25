@@ -18,6 +18,8 @@ bin_PROGRAMS = scs
 scs_SOURCES = \
 	scs.h \
 	singleCellSim.c \
+	gigp.h \
+	gigp.c \
 	matrix_io.c \
 	outdir.h \
 	outdir.c
