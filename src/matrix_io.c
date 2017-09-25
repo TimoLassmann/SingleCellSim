@@ -375,7 +375,7 @@ int print_float_matrix(struct float_matrix* m,FILE* file, int has_col_names,int 
 		if(has_row_names){
 			fprintf(file,"\t");
 		}
-		for(j = 0; j < MACRO_MIN( m->ncol,50);j++){
+		for(j = 0; j <  m->ncol;j++){
 			fprintf(file,"%s ", m->col_names[j]);
 		}
 		fprintf(file,"\n");
@@ -383,18 +383,18 @@ int print_float_matrix(struct float_matrix* m,FILE* file, int has_col_names,int 
 	if(has_row_names){
 		fprintf(file,"  ");
 	}
-	for(j = 0; j < MACRO_MIN( m->ncol,500);j++){
-		fprintf(file,"%4u ", m->label[j]);
+	for(j = 0; j < m->ncol;j++){
+		fprintf(file,"%4u\t", m->label[j]);
 	}
 	fprintf(file,"\n");
-	for(i = 0; i < MACRO_MIN(m->nrow,500);i++){
+	for(i = 0; i < m->nrow;i++){
 		if(has_row_names){
-			fprintf(file,"%s ",m->row_names[i]);
+			fprintf(file,"%s\t",m->row_names[i]);
 		}
-		for(j = 0; j < MACRO_MIN(m->ncol,500);j++){
-			fprintf(file,"%2.4f ", m->matrix[i][j]);
+		for(j = 0; j < m->ncol;j++){
+			fprintf(file,"%2.4f\t", m->matrix[i][j]);
 			
-		}
+		} 
 		fprintf(file,"\n");
 	}
 	return OK;

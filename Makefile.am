@@ -10,5 +10,5 @@ SUBDIRS = tldevel src
 TAGS:
 	etags -o TAGS -a ${srcdir}/src/*.c
 	etags -o TAGS -a ${srcdir}/src/*.h
-	etags -o TAGS -a ${srcdir}/libtldevel/*.h
-	etags -o TAGS -a ${srcdir}/libtldevel/*.c
+	etags -o TAGS -a ${srcdir}/tldevel/*.h
+	etags -o TAGS -a ${srcdir}/tldevel/*.c
