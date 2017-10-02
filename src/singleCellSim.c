@@ -32,6 +32,7 @@ struct parameters{
 struct shared_data{
         struct parameters* param;
         struct unique_transcript_count* utc;
+        struct double_matrix* gigp_param_out_table;
         struct gigp_param** working_gigp_param;
         struct gigp_param* gigp_param_best;
         struct gigp_param* gigp_param_initial_guess;
@@ -54,7 +55,9 @@ struct thread_data{
 
 int run_scs(struct parameters* param);
 
-struct unique_transcript_count* get_unique_transcript_vector(struct float_matrix* m, int column);
+int init_gigp_param_out_table(struct shared_data* bsd, struct double_matrix* input);
+
+int get_unique_transcript_vector(struct shared_data* bsd,struct double_matrix* m, int column);
 
 int fit_model(struct shared_data* bsd);
 
@@ -64,19 +67,23 @@ int set_initial_guess(struct shared_data* bsd);
 
 void* do_fit_model(void *threadarg);
 
+int enter_gigp_param_into_table(struct double_matrix* table, struct gigp_param* best,int col);
+
+
 int print_fit(struct shared_data* bsd);
 
 int calculate_rel_frequencies(struct shared_data* bsd);
 
 int sample_GIGP_same_depth_as_input(struct shared_data* bsd);
 
-
 int simulate_expression_table(struct shared_data* bsd);
 
 int write_fitted_param_to_file(struct gigp_param* gigp_param, char* filename);
+
 int read_fitted_param_from_file(struct gigp_param* gigp_param, char* filename);
 
 struct shared_data* init_shared_data(struct parameters* param);
+
 void free_shared_data(struct shared_data* bsd);
 
 static int compare_double (const void * a, const void * b);
@@ -170,7 +177,6 @@ int main (int argc, char * argv[])
                 }
         }
 
-
         if(!param->outdir){
                 fprintf(stderr,"You need to specify an output file suffix with -o option...\n");
                 exit(EXIT_FAILURE);
@@ -193,11 +199,11 @@ ERROR:
         return EXIT_FAILURE;
 }
 
-
 int run_scs(struct parameters* param)
 {
         struct shared_data* bsd = NULL;
-        struct float_matrix* m = NULL;
+        struct double_matrix* m = NULL;
+        int i;
 
         char buffer[BUFFER_LEN];
         /* allocate shared data  */
@@ -208,18 +214,49 @@ int run_scs(struct parameters* param)
         DECLARE_CHK(MAIN_CHECK, buffer);
 
         /* Read in counts..  */
-        RUNP(m = read_float_matrix(param->infile,1,1));
+        RUNP(m = read_double_matrix(param->infile,1,1));
+
+        /* init gigparam->out. */
+        RUN(init_gigp_param_out_table(bsd,m));
+        print_double_matrix(bsd->gigp_param_out_table,stdout,1,1);
+
+        /* do modelling for every sample in input table..  */
+        DECLARE_TIMER(t1);
+
+
+        for(i = 0 ;i < m->ncol;i++){
+                START_TIMER(t1)
+                LOG_MSG("Working on sample:%s.",m->col_names[i]);
+                /* Turn counts into frequency vector. */
+                RUN(get_unique_transcript_vector(bsd,m,i));
+                       /* do modelling...  */
+                LOG_MSG("Start modelling.");
+                snprintf(buffer, BUFFER_LEN, "GAGA");
+                RUN_CHECKPOINT(MAIN_CHECK,fit_model(bsd),buffer);
+
+
+                RUN(print_fit(bsd));
+
+                /* enter_estimated parameters in table..   */
+                RUN(enter_gigp_param_into_table(bsd->gigp_param_out_table,bsd->gigp_param_best,i));
+
+                /* reset best param.... */
+                RUN(clear_gigp_param(bsd->gigp_param_best));
+                STOP_TIMER(t1);
+                /* Donje  */
+                LOG_MSG("Done in %f seconds.",GET_TIMING(t1));
+        }
+
+        print_double_matrix(bsd->gigp_param_out_table,stdout,1,1);
 
         /* Turn counts into frequency vector. */
-        RUNP(bsd->utc = get_unique_transcript_vector(m,1));
+        //RUNP(bsd->utc = get_unique_transcript_vector(m,1));
 
-        /* set inital guesss */
-        RUN(set_initial_guess(bsd));
 
         /* do modelling...  */
-        LOG_MSG("Start modelling");
-        snprintf(buffer, BUFFER_LEN, "GAGA");
-        RUN_CHECKPOINT(MAIN_CHECK,fit_model(bsd),buffer);
+        //LOG_MSG("Start modelling");
+        //snprintf(buffer, BUFFER_LEN, "GAGA");
+        //RUN_CHECKPOINT(MAIN_CHECK,fit_model(bsd),buffer);
 
         /* print fit...    - also sets ->S !!! */
         RUN(print_fit(bsd));
@@ -237,14 +274,61 @@ int run_scs(struct parameters* param)
 
         DESTROY_CHK(MAIN_CHECK);
 
-        free_float_matrix(m);
+        free_double_matrix(m);
         free_shared_data(bsd);
         return OK;
 ERROR:
         free_shared_data(bsd);
-        free_float_matrix(m);
+        free_double_matrix(m);
         return FAIL;
 }
+
+int enter_gigp_param_into_table(struct double_matrix* table, struct gigp_param* best,int col)
+{
+        ASSERT(best != NULL,"No parameters to write.");
+        ASSERT(table != NULL,"No table.");
+        ASSERT(col < table->ncol,"Too few columns in parameter table.");
+
+        table->matrix[GIGP_GAMMA_ROW][col] = best->gamma;
+        table->matrix[GIGP_B_ROW][col] = best->b;
+        table->matrix[GIGP_C_ROW][col] = best->c;
+        table->matrix[GIGP_N_ROW][col] = best->N;
+        table->matrix[GIGP_s_ROW][col] = best->s;
+        table->matrix[GIGP_S_ROW][col] = best->S;
+        table->matrix[GIGP_MAXCOUNT_ROW][col] = best->max_count;
+        table->matrix[GIGP_FIT_ROW][col] = best->fit;
+
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+
+int init_gigp_param_out_table(struct shared_data* bsd, struct double_matrix* input)
+{
+
+        int i;
+        ASSERT(bsd != NULL,"No shared data.");
+        bsd->gigp_param_out_table = NULL;
+        RUNP(bsd->gigp_param_out_table = alloc_double_matrix(input->ncol,8,50));
+
+        for(i = 0; i< input->ncol;i++){
+                snprintf(bsd->gigp_param_out_table->col_names[i],50, "%s",input->col_names[i]);
+        }
+
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_GAMMA_ROW],50,"Gamma");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_B_ROW],50,"B");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_C_ROW],50,"C");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_N_ROW],50,"N");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_s_ROW],50,"s");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_S_ROW],50,"S");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_MAXCOUNT_ROW],50,"max");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_FIT_ROW],50,"Fit");
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 
 int sample_GIGP_same_depth_as_input(struct shared_data* bsd)
 {
@@ -334,7 +418,7 @@ ERROR:
 
 int simulate_expression_table(struct shared_data* bsd)
 {
-        struct float_matrix* m = NULL;
+        struct double_matrix* m = NULL;
         char buffer[BUFFER_LEN];
         FILE* in_ptr = NULL;
         double* rel_abundance = NULL;
@@ -380,7 +464,7 @@ int simulate_expression_table(struct shared_data* bsd)
         gsl_rng *rfff = gsl_rng_alloc (T);
         LOG_MSG("Allocating expression table: %d %d",bsd->param->num_cells,bsd->param->num_genes);
         /* alloc outout table and aux. vector  */
-        RUNP(m = alloc_float_matrix(bsd->param->num_cells,bsd->param->num_genes,15));
+        RUNP(m = alloc_double_matrix(bsd->param->num_cells,bsd->param->num_genes,15));
         /* fill fake names */
         for(i = 0; i < num_cells ;i++){
                 snprintf(m->col_names[i],15,"Cell%d",i+1);
@@ -431,20 +515,20 @@ int simulate_expression_table(struct shared_data* bsd)
 
         snprintf(buffer, BUFFER_LEN, "%s/%s/extable_%d_%d_CV%f.csv",bsd->param->outdir,OUTDIR_RESULTS,num_cells, simulated_read_depth,CV);
         RUNP(in_ptr = fopen(buffer, "w"));
-        RUN(print_float_matrix(m,in_ptr, 1,1));
+        RUN(print_double_matrix(m,in_ptr, 1,1));
         fclose(in_ptr);
 
         gsl_rng_free(rfff);
         MFREE(cell_abundance);
         MFREE(rel_abundance);
 
-        free_float_matrix(m);
+        free_double_matrix(m);
 
         return OK;
 
 ERROR:
         if(m){
-                free_float_matrix(m);
+                free_double_matrix(m);
         }
         if(rel_abundance){
                 MFREE(rel_abundance);
@@ -591,31 +675,29 @@ ERROR:
         return FAIL;
 }
 
-struct unique_transcript_count* get_unique_transcript_vector(struct float_matrix* m, int column)
+int get_unique_transcript_vector(struct shared_data* bsd, struct double_matrix* m, int column)
 {
         struct unique_transcript_count* utc = NULL;
         int i,c;
+        ASSERT(bsd != NULL,"No shared data.");
         ASSERT(m != NULL,"Count matrix is NULL.");
 
         ASSERT(column < m->nrow,"Count matrix has %d columns but you ask for %d.", m->nrow,column );
 
-        MMALLOC(utc, sizeof(struct unique_transcript_count));
-        utc->x = NULL;
-        utc->alloc_size = 10000;
-        utc->max = 0;
+        utc = bsd->utc;
 
-        MMALLOC(utc->x, sizeof(double)* utc->alloc_size);
+        utc->max = 0;
         for(i = 0; i < utc->alloc_size;i++){
                 utc->x[i] = 0.0;
         }
         for(i = 0; i < m->nrow;i++){
                 if(m->matrix[i][column] != 0){
                         while( (int)m->matrix[i][column]  >= utc->alloc_size){
-                                utc->x = realloc(utc->x, sizeof(double)*  utc->alloc_size *2);
-                                for(c =  utc->alloc_size;c <  utc->alloc_size*2 ;  c++ ){
+                                utc->x = realloc(utc->x, sizeof(double)*  (utc->alloc_size +64));
+                                for(c =  utc->alloc_size;c <  (utc->alloc_size+64) ;  c++ ){
                                         utc->x[c] = 0.0;
                                 }
-                                utc->alloc_size =  utc->alloc_size << 1;
+                                utc->alloc_size = (utc->alloc_size +64);
                         }
                         if(utc->max < (int) m->matrix[i][column] ){
                                 utc->max = (int) m->matrix[i][column];
@@ -623,9 +705,9 @@ struct unique_transcript_count* get_unique_transcript_vector(struct float_matrix
                         utc->x[(int) m->matrix[i][column]] += 1.0;
                 }
         }
-        return utc;
+        return OK;
 ERROR:
-        return NULL;
+        return FAIL;
 }
 
 int fit_model(struct  shared_data* bsd)
@@ -653,6 +735,12 @@ int fit_model(struct  shared_data* bsd)
         int i,j,c,g;
 
         g = 0;
+
+        ASSERT(bsd != NULL,"No shared data.");
+
+        /* set inital guesss */
+        RUN(set_initial_guess(bsd));
+
         LOG_MSG("Start Estimating Parameters.");
         MMALLOC(td, sizeof(struct thread_data*) * alloc_td);
 
@@ -664,7 +752,7 @@ int fit_model(struct  shared_data* bsd)
                                 td[g]->bsd = bsd;
                                 td[g]->thread_id = 0;
                                 td[g]->num_threads = bsd->param->num_threads;
-                                td[g]->try_gamma = min_gamma + ((max_gamma -min_gamma  )/(double)step *(double)i);
+                                td[g]->try_gamma = min_gamma + ((max_gamma - min_gamma  )/(double)step *(double)i);
                                 td[g]->try_b  = min_b + ((max_b -min_b  )/(double)step *(double)j);
                                 td[g]->try_c  = min_c + ((max_c -min_c  )/(double)step *(double)c);
 
@@ -784,7 +872,6 @@ void* do_fit_model(void *threadarg)
         gigp->gamma = data->try_gamma;
         gigp->b = data->try_b;
         gigp->c = data->try_c;
-
         RUN(fit_gigp(gigp,data->bsd->utc->x, data->bsd->utc->max));
 
         pthread_mutex_lock(&data->bsd->avail_mtx);
@@ -812,6 +899,7 @@ struct shared_data* init_shared_data(struct parameters* param)
         MMALLOC(bsd, sizeof(struct shared_data));
         bsd->param = param;
         bsd->utc = NULL;
+        bsd->gigp_param_out_table = NULL;
         bsd->gigp_param_best  = NULL;
         bsd->gigp_param_initial_guess  = NULL;
 
@@ -834,8 +922,15 @@ struct shared_data* init_shared_data(struct parameters* param)
 
         RUNP(tmp = init_gigp_param());
         bsd->gigp_param_initial_guess = tmp;
-        bsd->gigp_param_best->fit=  DBL_MAX;
         tmp = NULL;
+
+        MMALLOC(bsd->utc, sizeof(struct unique_transcript_count));
+        bsd->utc->x = NULL;
+        bsd->utc->alloc_size = 16384;
+        bsd->utc->max = 0;
+
+        MMALLOC(bsd->utc->x, sizeof(double)* bsd->utc->alloc_size);
+
 
         MMALLOC(bsd->working_gigp_param,sizeof(struct gigp_param*)* bsd->num_threads);
         for(i = 0; i < bsd->num_threads;i++){
@@ -881,41 +976,6 @@ void free_shared_data(struct shared_data* bsd)
         }
 }
 
-struct gigp_param* init_gigp_param(void)
-{
-        struct gigp_param* tmp = NULL;
-        MMALLOC(tmp,sizeof(struct gigp_param));
-        tmp->gamma = 0.0;
-        tmp->b = 0.0;
-        tmp->c = 0.0;
-        tmp->N = 0.0;
-        tmp->s = 0.0;
-        tmp->S = 0.0;
-        tmp->fit = 0.0;
-        tmp->max_count = 0.0;
-        return tmp;
-ERROR:
-        return NULL;
-}
-
-int copy_gigp_param(struct gigp_param* source, struct gigp_param* target)
-{
-        ASSERT(source != NULL," No source.");
-        ASSERT(target != NULL," No target.");
-        /* copy estimated parameters back  */
-        target->gamma = source->gamma;
-        target->b = source->b;
-        target->c = source->c;
-        target->N = source->N;
-        target->s = source->s;
-        target->S = source->S;
-        target->fit = source->fit;
-        target->max_count = source->max_count;
-
-        return OK;
-ERROR:
-        return FAIL;
-}
 
 double* fill_fitted_curve(double* fit,int num,struct gigp_param* param )
 {
