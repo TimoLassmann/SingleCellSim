@@ -33,6 +33,7 @@ struct shared_data{
         struct parameters* param;
         struct unique_transcript_count* utc;
         struct double_matrix* gigp_param_out_table;
+        struct double_matrix* rel_abundances;
         struct gigp_param** working_gigp_param;
         struct gigp_param* gigp_param_best;
         struct gigp_param* gigp_param_initial_guess;
@@ -45,6 +46,7 @@ struct shared_data{
 struct thread_data{
         struct shared_data* bsd;
         struct gigp_param* gigp_param;
+        double* vector;
         double try_gamma;
         double try_b;
         double try_c;
@@ -68,7 +70,16 @@ int set_initial_guess(struct shared_data* bsd);
 void* do_fit_model(void *threadarg);
 
 int enter_gigp_param_into_table(struct double_matrix* table, struct gigp_param* best,int col);
+int read_gigp_param_from_table(struct double_matrix* table, struct gigp_param* best,int col);
 
+
+int write_gigp_param_table_to_file(struct shared_data* bsd);
+int read_gigp_param_table_from_file(struct shared_data* bsd);
+        
+int fit_curves_make_growth_curve(struct shared_data* bsd, struct double_matrix* m);
+
+int fill_rel_abundance_matrix(struct shared_data* bsd, struct double_matrix* m);
+void* run_get_rel_abundances (void *threadarg);
 
 int print_fit(struct shared_data* bsd);
 
@@ -88,14 +99,13 @@ void free_shared_data(struct shared_data* bsd);
 
 static int compare_double (const void * a, const void * b);
 
-double* fill_fitted_curve(double* fit,int num,struct gigp_param* param );
+int fill_fitted_curve(double* fit,int num,struct gigp_param* param );
 
 double* pick_abundances(struct gigp_param* gigp_param, double* random, double* abundances,int outer_low,int outer_high,double inner_low,double inner_high);
 
 int main (int argc, char * argv[])
 {
         struct parameters* param = NULL;
-
         tlog.echo_build_config();
         MMALLOC(param, sizeof(struct parameters));
         param->infile = NULL;
@@ -164,7 +174,6 @@ int main (int argc, char * argv[])
                 case 'i':
                         param->infile = optarg;
                         break;
-
                 case 'o':
                         param->outdir = optarg;
                         break;
@@ -219,48 +228,47 @@ int run_scs(struct parameters* param)
         /* init gigparam->out. */
         RUN(init_gigp_param_out_table(bsd,m));
         print_double_matrix(bsd->gigp_param_out_table,stdout,1,1);
-
+        
         /* do modelling for every sample in input table..  */
         DECLARE_TIMER(t1);
-
-
+        
         for(i = 0 ;i < m->ncol;i++){
-                START_TIMER(t1)
+                START_TIMER(t1);
                 LOG_MSG("Working on sample:%s.",m->col_names[i]);
                 /* Turn counts into frequency vector. */
                 RUN(get_unique_transcript_vector(bsd,m,i));
-                       /* do modelling...  */
+                fprintf(stderr,"%s %d\n",m->col_names[i],bsd->utc->max);
+                /* do modelling...  */
                 LOG_MSG("Start modelling.");
-                snprintf(buffer, BUFFER_LEN, "GAGA");
+                snprintf(buffer, BUFFER_LEN, "fit model for sample %d.",i);
                 RUN_CHECKPOINT(MAIN_CHECK,fit_model(bsd),buffer);
-
-
-                RUN(print_fit(bsd));
-
+                
                 /* enter_estimated parameters in table..   */
                 RUN(enter_gigp_param_into_table(bsd->gigp_param_out_table,bsd->gigp_param_best,i));
-
+                
                 /* reset best param.... */
                 RUN(clear_gigp_param(bsd->gigp_param_best));
                 STOP_TIMER(t1);
                 /* Donje  */
                 LOG_MSG("Done in %f seconds.",GET_TIMING(t1));
         }
+        /* fit curves, print and calculate S (estmated number of transcripts in samples.  */
+        snprintf(buffer, BUFFER_LEN, "datadim:%d %d.",m->ncol,m->nrow);
+        RUN_CHECKPOINT(MAIN_CHECK,fit_curves_make_growth_curve(bsd, m), buffer);
+        /* critical! writes estimated total number of transcripts per cell / sample  */
+        snprintf(buffer, BUFFER_LEN, "Write parameters.");
+        RUN_CHECKPOINT(MAIN_CHECK,write_gigp_param_table_to_file(bsd),buffer);
+        
+        /* calculate relative abundances...  */
+        RUN(print_double_matrix(bsd->gigp_param_out_table,stdout ,1,1));
+        
+        RUN(read_gigp_param_table_from_file(bsd));
+        
+        RUN(print_double_matrix(bsd->gigp_param_out_table, stdout,1,1));
+        RUN(fill_rel_abundance_matrix(bsd,m));
 
-        print_double_matrix(bsd->gigp_param_out_table,stdout,1,1);
-
-        /* Turn counts into frequency vector. */
-        //RUNP(bsd->utc = get_unique_transcript_vector(m,1));
-
-
-        /* do modelling...  */
-        //LOG_MSG("Start modelling");
-        //snprintf(buffer, BUFFER_LEN, "GAGA");
-        //RUN_CHECKPOINT(MAIN_CHECK,fit_model(bsd),buffer);
-
-        /* print fit...    - also sets ->S !!! */
-        RUN(print_fit(bsd));
-
+        exit(0);
+        
         /* calcuate relative frequencies from distribution and simulate. */
         snprintf(buffer, BUFFER_LEN, "%lf %lf %lf",round(bsd->gigp_param_best->gamma*100000)/100000.0f, round(bsd->gigp_param_best->b*100000)/100000.0f,round(bsd->gigp_param_best->c*100000)/100000.0f);
         RUN_CHECKPOINT(MAIN_CHECK,calculate_rel_frequencies(bsd),buffer);
@@ -283,6 +291,240 @@ ERROR:
         return FAIL;
 }
 
+int fill_rel_abundance_matrix(struct shared_data* bsd, struct double_matrix* m)
+{
+        char buffer[BUFFER_LEN];
+        FILE* out_ptr = NULL;
+        struct thread_data** td = NULL;
+        double sum; 
+        int status;
+ 
+        int max_S;
+        int i,j; 
+        ASSERT(bsd != NULL, "No shared data!"); 
+        ASSERT(bsd->rel_abundances == NULL,"Rel abundance matrix not NULL.");
+        
+        RUN(read_gigp_param_table_from_file(bsd));
+        
+        max_S = 0;
+        for(i = 0; i < bsd->gigp_param_out_table->ncol;i++){
+                if(bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i] > max_S){
+                        max_S = bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i];
+                }
+                fprintf(stdout,"%f %d\n", bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i], max_S);
+        }
+        /* confusing! the matrix is flipped - samples in rows!  */
+        RUNP(bsd->rel_abundances = alloc_double_matrix(  max_S +1,m->ncol,50));
+        
+        for(i = 0; i < m->ncol;i++){
+                snprintf(bsd->rel_abundances->row_names[i],50, "%s",m->col_names[i]);
+        }
+        
+        for(i = 0; i < (max_S +1);i++){
+                snprintf(bsd->rel_abundances->col_names[i],50, "%d",i);
+        }
+        LOG_MSG("Start creating relative abundances.");
+        MMALLOC(td, sizeof(struct thread_data*) * m->ncol);
+
+        for(i = 0; i < m->ncol;i++){
+                td[i] = NULL;
+                MMALLOC(td[i], sizeof(struct thread_data));
+                td[i]->thread_id = i;
+                td[i]->target = i;
+                td[i]->bsd = bsd;
+                td[i]->vector = NULL;
+                MMALLOC(td[i]->vector,sizeof(double) * (max_S+1));
+                td[i]->num_threads = bsd->param->num_threads;
+                RUNP(td[i]->gigp_param = init_gigp_param());
+                RUN(read_gigp_param_from_table(bsd->gigp_param_out_table,td[i]->gigp_param,i));
+                //td[i]->gigp_param->S = max_S;
+                if((status = thr_pool_queue(bsd->pool,run_get_rel_abundances,td[i])) == -1) fprintf(stderr,"Adding job to queue failed.");
+        }
+        thr_pool_wait(bsd->pool);
+        RUNP(bsd->rel_abundances = transpose_double_matrix(bsd->rel_abundances));
+
+        //make sure dist sums to one... 
+        for(i = 0; i < m->ncol;i++){
+                sum = 0.0;
+                for(j = 0;j < bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i];j++){
+                        sum += bsd->rel_abundances->matrix[j][i];
+                }
+
+                for(j = 0;j < bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i];j++){
+                        bsd->rel_abundances->matrix[j][i] /= sum;
+                }
+        }
+        
+        snprintf(buffer, BUFFER_LEN, "%s/%s/Relabundances.csv",bsd->param->outdir,OUTDIR_RESULTS);
+        LOG_MSG("Write to file: %s",buffer);
+        RUNP(out_ptr = fopen(buffer, "w" ));
+        
+        RUN(print_double_matrix(bsd->rel_abundances,out_ptr,1,1));
+        fclose(out_ptr);
+
+        for(i = 0; i < m->ncol;i++){
+                for(j = 1;j < bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i];j++){
+                        bsd->rel_abundances->matrix[j][i] += bsd->rel_abundances->matrix[j-1][i];   
+                }
+        }
+        
+        snprintf(buffer, BUFFER_LEN, "%s/%s/Relabundances_sum.csv",bsd->param->outdir,OUTDIR_RESULTS);
+        LOG_MSG("Write to file: %s",buffer);
+        RUNP(out_ptr = fopen(buffer, "w" ));
+        
+        RUN(print_double_matrix(bsd->rel_abundances,out_ptr,1,1));
+        fclose(out_ptr);
+        
+        for(i = 0; i < m->ncol;i++){
+                MFREE(td[i]->vector);
+                MFREE(td[i]);
+        }
+        MFREE(td);
+        
+        //     MMALLOC(rel_abundance, sizeof(double) * (int) (bsd->gigp_param_best->S+1));
+        //MMALLOC(observed, sizeof(double) * (int)(bsd->gigp_param_best->S+1));
+        return OK;        
+ERROR:
+        return FAIL;
+}
+
+void* run_get_rel_abundances (void *threadarg)
+{
+        struct thread_data *data = NULL;
+        struct gigp_param* gigp = NULL;
+        double* observed = NULL;
+        double* rel_abundance = NULL;
+        int target;
+        int i;
+        data = (struct thread_data *) threadarg;
+        
+        /* copy param to working  param struct..  */
+        
+        ASSERT(data->bsd != NULL,"No shared data.");
+        
+        target = data->target;
+        gigp = data->gigp_param;
+        
+        observed = data->vector;
+        rel_abundance = data->bsd->rel_abundances->matrix[target];
+        
+        for(i = 0; i <(int) (gigp->S+1);i++){
+                rel_abundance[i] = 0.0;
+                observed[i] =  random_float_zero_to_x(1.0);
+        }
+        
+        qsort(observed, (int)gigp->S, sizeof(double), compare_double);
+        rel_abundance = pick_abundances(gigp, observed, rel_abundance, 0 ,(int)gigp->S,1e-7,1);
+        qsort(rel_abundance, (int)gigp->S, sizeof(double), compare_double);
+        
+        return NULL;
+ERROR:
+        return NULL;
+}
+
+int fit_curves_make_growth_curve(struct shared_data* bsd, struct double_matrix* m)
+{
+        char buffer[BUFFER_LEN];
+        
+        double* fitted = NULL;
+        FILE* out_ptr = NULL;
+        double sum = 0.0;
+        int i,j;
+        
+        ASSERT(m != NULL,"No data.");
+        ASSERT(bsd != NULL, "No shared data.");
+        
+        for(i = 0 ;i < m->ncol;i++){
+                LOG_MSG("Fitting curve to sample:%s.",m->col_names[i]);
+                /* read in parameters for sample i..  */
+                RUN(read_gigp_param_from_table(bsd->gigp_param_out_table,bsd->gigp_param_best,i));
+                
+                /* Turn counts into frequency vector. */
+                RUN(get_unique_transcript_vector(bsd,m,i));
+                
+                /* make fitted and after write estimates S back into tables...  */
+                MMALLOC(fitted,sizeof(double) * bsd->utc->max);
+                RUN(fill_fitted_curve(fitted ,bsd->utc->max, bsd->gigp_param_best));
+                
+                /* enter_estimated parameters in table..   */
+                RUN(enter_gigp_param_into_table(bsd->gigp_param_out_table,bsd->gigp_param_best,i));
+                
+                /* print fitted file...  */
+                snprintf(buffer, BUFFER_LEN, "%s/%s/GIGP_fit_%s.csv",bsd->param->outdir,OUTDIR_RESULTS,m->col_names[i]);
+                LOG_MSG("Write to file: %s",buffer);
+                RUNP(out_ptr = fopen(buffer, "w" ));
+                
+                for(j = 1; j <  bsd->utc->max;j++){
+                        if( bsd->utc->x[j]){
+                                fprintf(out_ptr,"%d,%f,%f\n",  j,  bsd->utc->x[j],fitted[j]);
+                        }
+                }
+                fclose(out_ptr);
+                MFREE(fitted);
+                
+                /* print growth curve */
+                snprintf(buffer, BUFFER_LEN, "%s/%s/GIGP_growth_curve_%s.csv",bsd->param->outdir,OUTDIR_RESULTS,m->col_names[i]);
+                LOG_MSG("Writing to: %s",buffer);
+                RUNP(out_ptr = fopen(buffer, "w" ));
+                sum = bsd->gigp_param_best->N;
+
+                for(j = 1000000; j <= 50000000;j+= 1000000){
+                        if(j < sum && (double)(j + 1000000.0) > sum){
+                                bsd->gigp_param_best->N = sum;
+                                fprintf(out_ptr,"%d,%d,%d\n",(int)sum, (int)(bsd->gigp_param_best->S * ( 1.0 - give_me_sichel_p0(bsd->gigp_param_best,bsd->utc->x))),(int) bsd->gigp_param_best->S);
+                        }
+                        bsd->gigp_param_best->N = j;
+                        fprintf(out_ptr,"%d,%d,%d\n",j, (int)(bsd->gigp_param_best->S * ( 1.0 - give_me_sichel_p0(bsd->gigp_param_best,bsd->utc->x))),(int) bsd->gigp_param_best->S);
+                }
+
+                fclose(out_ptr);
+                bsd->gigp_param_best->N = sum;
+
+                
+                
+                /* Done  */
+                LOG_MSG("Done.");
+        }
+       
+        return OK;
+ERROR:
+        return FAIL;
+}
+
+
+int read_gigp_param_table_from_file(struct shared_data* bsd)
+{
+        char buffer[BUFFER_LEN];
+        
+        ASSERT(bsd != NULL,"No shared data");
+
+        if(bsd->gigp_param_out_table){
+                WARNING_MSG("GIGP param table not empty will delete and load from file...");
+                free_double_matrix(bsd->gigp_param_out_table);
+        }
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.csv");
+        RUNP(bsd->gigp_param_out_table =read_double_matrix(buffer,1,1));
+        
+        return OK;
+ERROR:
+        return FAIL;
+}
+        
+int write_gigp_param_table_to_file(struct shared_data* bsd)
+{
+        char buffer[BUFFER_LEN];
+        FILE* file_ptr = NULL;
+        ASSERT(bsd != NULL, "No shared parameters.");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.csv");
+        RUNP(file_ptr = fopen(buffer,"w"));
+        RUN(print_double_matrix(bsd->gigp_param_out_table,file_ptr ,1,1));
+
+        fclose(file_ptr);
+        return OK;
+ERROR:
+        return FAIL; 
+}
+
 int enter_gigp_param_into_table(struct double_matrix* table, struct gigp_param* best,int col)
 {
         ASSERT(best != NULL,"No parameters to write.");
@@ -303,10 +545,28 @@ ERROR:
         return FAIL;
 }
 
+int read_gigp_param_from_table(struct double_matrix* table, struct gigp_param* best,int col)
+{
+        ASSERT(best != NULL,"No parameters to write.");
+        ASSERT(table != NULL,"No table.");
+        ASSERT(col < table->ncol,"Too few columns in parameter table.");
+
+        best->gamma = table->matrix[GIGP_GAMMA_ROW][col];
+        best->b = table->matrix[GIGP_B_ROW][col];
+        best->c = table->matrix[GIGP_C_ROW][col];
+        best->N = table->matrix[GIGP_N_ROW][col];
+        best->s = table->matrix[GIGP_s_ROW][col];
+        best->S = table->matrix[GIGP_S_ROW][col];
+        best->max_count = table->matrix[GIGP_MAXCOUNT_ROW][col];
+        best->fit = table->matrix[GIGP_FIT_ROW][col];
+        return OK;
+ERROR:
+        return FAIL;
+}
+
 
 int init_gigp_param_out_table(struct shared_data* bsd, struct double_matrix* input)
 {
-
         int i;
         ASSERT(bsd != NULL,"No shared data.");
         bsd->gigp_param_out_table = NULL;
@@ -604,7 +864,7 @@ int print_fit(struct shared_data* bsd)
         RUN(read_fitted_param_from_file(bsd->gigp_param_best,buffer));
 
         MMALLOC(fitted,sizeof(double) * bsd->utc->max);
-        fitted =  fill_fitted_curve(fitted ,bsd->utc->max, bsd->gigp_param_best);
+        RUN(fill_fitted_curve(fitted ,bsd->utc->max, bsd->gigp_param_best));
 
         /* print fitted file...  */
         snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_fit.csv");
@@ -709,6 +969,7 @@ int get_unique_transcript_vector(struct shared_data* bsd, struct double_matrix* 
 ERROR:
         return FAIL;
 }
+
 
 int fit_model(struct  shared_data* bsd)
 {
@@ -900,6 +1161,7 @@ struct shared_data* init_shared_data(struct parameters* param)
         bsd->param = param;
         bsd->utc = NULL;
         bsd->gigp_param_out_table = NULL;
+        bsd->rel_abundances = NULL;
         bsd->gigp_param_best  = NULL;
         bsd->gigp_param_initial_guess  = NULL;
 
@@ -977,12 +1239,13 @@ void free_shared_data(struct shared_data* bsd)
 }
 
 
-double* fill_fitted_curve(double* fit,int num,struct gigp_param* param )
+int fill_fitted_curve(double* fit,int num,struct gigp_param* param )
 {
-        double alpha = param->b*sqrt(1.0 + param->c *param->N );
-        double beta = (param->b*param->c*param->N)/(2.0 * sqrt(1.0 + param->c *param->N ));
+        
+        double alpha = 0.0;
+        double beta = 0.0;
 
-        double gamma = param->gamma;
+        double gamma = 0.0;
         double res[3];
 
 
@@ -995,6 +1258,13 @@ double* fill_fitted_curve(double* fit,int num,struct gigp_param* param )
         double bessel2 = 0.0;
         int status = 0;
 
+        ASSERT(param != NULL,"No parameters.");
+
+        alpha = param->b*sqrt(1.0 + param->c *param->N );
+        beta = (param->b*param->c*param->N)/(2.0 * sqrt(1.0 + param->c *param->N ));
+
+        gamma = param->gamma;
+        
         x = 0;
 
 
@@ -1065,7 +1335,9 @@ double* fill_fitted_curve(double* fit,int num,struct gigp_param* param )
                 fit[(int)x] = fit[(int)x] / sum * param->S;
         }
 
-        return fit;
+        return OK;
+ERROR:
+        return FAIL;
 }
 
 
@@ -1079,12 +1351,11 @@ static int compare_double (const void * a, const void * b)
 
 double* pick_abundances(struct gigp_param* gigp_param, double* random, double* abundances,int outer_low,int outer_high,double inner_low,double inner_high)
 {
-
         if(outer_low > outer_high){
                 return abundances;
         }
         gsl_function F;
-        gsl_integration_workspace * w	= gsl_integration_workspace_alloc (100);
+        gsl_integration_workspace * w	= gsl_integration_workspace_alloc (1000);
         struct gigp_param param_4integration;
         param_4integration.gamma =  gigp_param->gamma;
         param_4integration.b = gigp_param->b;
@@ -1095,28 +1366,20 @@ double* pick_abundances(struct gigp_param* gigp_param, double* random, double* a
         double x,r;
         double integration_result, error,sum;
         //r =   (double)rand_r(&seed)/(double)RAND_MAX;
-        x = 1;
-        gsl_integration_qag (&F, 1e-7, x, 0, 1e-7, 100,1,    w, &integration_result, &error);
+        x = 1.0;
+        gsl_integration_qag (&F, 0.0, x,1e-12, 1e-16, 1000,GSL_INTEG_GAUSS61, w , &integration_result, &error);
         sum = integration_result;
-
-
-
+        
         double inner_mid = 0.0;
         int outer_mid;
-
-
-
-        outer_mid =  (outer_high + outer_low) / 2;
-
+        
+        outer_mid =  (outer_high + outer_low) / 2.0;
+        
         double tmp[3];
-
+        
         tmp[0] = inner_low;
         tmp[1] = inner_mid;
         tmp[2] = inner_high;
-
-
-        //fprintf(stderr,"Working on:%d	%d	%d	%10.10e	%10.10e\n", (int) outer_mid,   outer_low,outer_high,inner_low,inner_high  );
-
 
         r = random[(int)outer_mid];
         if(r == -1.0){
@@ -1125,7 +1388,7 @@ double* pick_abundances(struct gigp_param* gigp_param, double* random, double* a
         }
         while(1){
                 inner_mid = (inner_high + inner_low )/ 2.0;
-                gsl_integration_qag (&F, 1e-7, inner_mid, 0, 1e-7, 100,1,    w, &integration_result, &error);
+                gsl_integration_qag (&F, 0.0, inner_mid,1e-12, 1e-16, 1000,GSL_INTEG_GAUSS61,w , &integration_result, &error);
                 integration_result = integration_result / sum;
                 //fprintf(stderr,"L:%e\tH:%e\tmid:%e\t\t%f\t%f\n", inner_low,inner_high,inner_mid, integration_result, r  );
 
@@ -1135,7 +1398,7 @@ double* pick_abundances(struct gigp_param* gigp_param, double* random, double* a
                         break;
                 }else if(integration_result < r){
                         inner_low = inner_mid;
-                }else	 if(integration_result > r ){
+                }else	if(integration_result > r ){
                         inner_high = inner_mid;
                 }
 
@@ -1160,3 +1423,4 @@ double* pick_abundances(struct gigp_param* gigp_param, double* random, double* a
 
         return  abundances;
 }
+

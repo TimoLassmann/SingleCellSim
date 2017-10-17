@@ -114,7 +114,9 @@ struct double_matrix* read_double_matrix(char* filename, int has_col_names,int h
                                         if(has_row_names){
                                                 if(j){
 
-                                                        m->matrix[i_mem][j_mem] = atof(tmp_storage);
+                                                        if(sscanf(tmp_storage,"%lf",&m->matrix[i_mem][j_mem]) != 1){
+                                                                ERROR_MSG("could not read");
+                                                        }
                                                         j_mem++;
                                                 }else{
                                                         for(lastchar = 0; lastchar <= n ;lastchar++){
@@ -123,14 +125,19 @@ struct double_matrix* read_double_matrix(char* filename, int has_col_names,int h
                                                         fprintf(stdout,"%d: %s\n",i_mem,m->row_names[i_mem]);
                                                 }
                                         }else{
-                                                m->matrix[i_mem][j_mem]  = atof(tmp_storage);
+                                                if(sscanf(tmp_storage,"%lf",&m->matrix[i_mem][j_mem]) != 1){
+                                                        ERROR_MSG("could not read");
+                                                }
                                                 j_mem++;
                                         }
                                 }
                         }else{
                                 if(has_row_names){
                                         if(j){
-                                                m->matrix[i_mem][j_mem]  = atof(tmp_storage);
+                                                if(sscanf(tmp_storage,"%lf",&m->matrix[i_mem][j_mem]) != 1){
+                                                        ERROR_MSG("could not read");
+                                                }
+                                        
                                                 j_mem++;
                                         }else{
                                                 for(lastchar = 0; lastchar <= n ;lastchar++){
@@ -138,7 +145,9 @@ struct double_matrix* read_double_matrix(char* filename, int has_col_names,int h
                                                 }
                                         }
                                 }else{
-                                        m->matrix[i_mem][j_mem] = atof(tmp_storage);
+                                        if(sscanf(tmp_storage,"%lf",&m->matrix[i_mem][j_mem]) != 1){
+                                                ERROR_MSG("could not read");
+                                        }
                                         j_mem++;
                                 }
                         }
@@ -153,12 +162,17 @@ struct double_matrix* read_double_matrix(char* filename, int has_col_names,int h
                                                 m->col_names[j_mem][lastchar] = tmp_storage[lastchar];
                                         }
                                 }else{
-                                        m->matrix[i_mem][j_mem] = atof(tmp_storage);
+                                        if(sscanf(tmp_storage,"%lf",&m->matrix[i_mem][j_mem]) != 1){
+                                                ERROR_MSG("could not read");
+                                        }
+                                        
                                         j_mem++;
                                         i_mem++;
                                 }
                         }else{
-                                m->matrix[i_mem][j_mem]  = atof(tmp_storage);
+                                if(sscanf(tmp_storage,"%lf",&m->matrix[i_mem][j_mem]) != 1){
+                                        ERROR_MSG("could not read");
+                                }
                                 j_mem++;
                                 i_mem++;
                         }
@@ -267,6 +281,57 @@ struct double_matrix* alloc_double_matrix(int ncol,int nrow, int name_len)
         return m;
 ERROR:
         free_double_matrix(m);
+        return NULL;
+}
+
+struct double_matrix* transpose_double_matrix(struct double_matrix* m)
+{
+        struct double_matrix* t = NULL;
+        int i,j;
+        int max_len = 0;
+        ASSERT(m != NULL,"No input matrix.");
+        /* get dim of new matrix */
+        max_len = 0;
+        for(i = 0; i < m->ncol;i++){
+                j = strlen(m->col_names[i]);
+                if(j > max_len){
+                        max_len = j;                        
+                }
+        }
+        for(i = 0; i < m->nrow;i++){
+                j = strlen(m->row_names[i]);
+                if(j > max_len){
+                        max_len = j;                        
+                }
+        }
+        if(max_len == 0){
+                max_len = 0; 
+        }
+
+        
+        RUNP(t = alloc_double_matrix(m->nrow, m->ncol, max_len));
+        
+        /* copy names  */
+        for(i = 0; i < m->ncol;i++){
+                snprintf(t->row_names[i],max_len,"%s", m->col_names[i]);
+        }
+        for(i = 0; i < m->nrow;i++){
+                snprintf(t->col_names[i],max_len,"%s", m->row_names[i]);
+        }
+        /* copy values  */
+        for(j = 0; j < m->nrow;j++){
+   
+                for(i = 0; i < m->ncol;i++){
+                        t->matrix[i][j] = m->matrix[j][i];
+                }
+        }
+
+
+        
+        free_double_matrix(m);
+        
+        return t;
+ERROR:
         return NULL;
 }
 
@@ -389,7 +454,7 @@ int print_double_matrix(struct double_matrix* m,FILE* file, int has_col_names,in
                         fprintf(file,"%s,",m->row_names[i]);
                 }
                 for(j = 0; j < m->ncol;j++){
-                        fprintf(file,"%2.4f", m->matrix[i][j]);
+                        fprintf(file,"%10.10e", m->matrix[i][j]);
                         if(j != m->ncol-1){
                                 fprintf(file,",");
                         }

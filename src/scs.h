@@ -37,6 +37,7 @@ struct double_matrix{
 
 struct double_matrix* read_double_matrix(char* filename, int has_col_names,int has_row_names);
 struct double_matrix* alloc_double_matrix(int ncol,int nrow, int name_len);
+struct double_matrix* transpose_double_matrix(struct double_matrix* m);
 int add_rows_double_matrix(struct double_matrix* m, int n_extra);
 int remove_rows_double_matrix(struct double_matrix* m, int n_extra);
 int fill_random_matrix(struct double_matrix* m);
