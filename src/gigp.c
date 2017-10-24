@@ -178,7 +178,7 @@ double give_me_sichel_p0(struct gigp_param* gigp_param,double* p )
         res[1] = y;
 
         for(x = 2.0; x < max_observed;x+=1.0){
-                y = (2.0*beta)/ alpha * ((x + gamma -1.0)/ x) * res[1] + (pow(beta,2.0)/ ( x *(x-1.0) )  )* res[0];
+                /* y = (2.0*beta)/ alpha * ((x + gamma -1.0)/ x) * res[1] + (pow(beta,2.0)/ ( x *(x-1.0) )  )* res[0]; */
                 //if(p[(int)x]){
                 sum += y;
                 //}

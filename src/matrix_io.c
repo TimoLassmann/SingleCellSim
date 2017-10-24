@@ -66,7 +66,10 @@ struct double_matrix* read_double_matrix(char* filename, int has_col_names,int h
 
         rewind(file);
 
-        longest_entry += 10; //in case I need to add stuff
+        if(longest_entry < 50){
+                longest_entry = 50;
+        }
+        
         MMALLOC(tmp_storage,sizeof(char)*  (longest_entry+1));
 
         RUNP(m = alloc_double_matrix(max_columns,nrows,longest_entry+1));
@@ -240,6 +243,7 @@ struct double_matrix* alloc_double_matrix(int ncol,int nrow, int name_len)
         m->real_sample = ncol;
         m->ncol = ncol;
         m->nrow = nrow;
+        m->name_len = name_len;
         m->matrix_mem = NULL;
         m->col_names = NULL;
         m->row_names = NULL;
@@ -288,48 +292,26 @@ struct double_matrix* transpose_double_matrix(struct double_matrix* m)
 {
         struct double_matrix* t = NULL;
         int i,j;
-        int max_len = 0;
         ASSERT(m != NULL,"No input matrix.");
-        /* get dim of new matrix */
-        max_len = 0;
-        for(i = 0; i < m->ncol;i++){
-                j = strlen(m->col_names[i]);
-                if(j > max_len){
-                        max_len = j;                        
-                }
-        }
-        for(i = 0; i < m->nrow;i++){
-                j = strlen(m->row_names[i]);
-                if(j > max_len){
-                        max_len = j;                        
-                }
-        }
-        if(max_len == 0){
-                max_len = 0; 
-        }
-
         
-        RUNP(t = alloc_double_matrix(m->nrow, m->ncol, max_len));
+        /* get dim of new matrix */      
+        RUNP(t = alloc_double_matrix(m->nrow, m->ncol,m->name_len));
         
         /* copy names  */
         for(i = 0; i < m->ncol;i++){
-                snprintf(t->row_names[i],max_len,"%s", m->col_names[i]);
+                snprintf(t->row_names[i],m->name_len,"%s", m->col_names[i]);
         }
+        
         for(i = 0; i < m->nrow;i++){
-                snprintf(t->col_names[i],max_len,"%s", m->row_names[i]);
+                snprintf(t->col_names[i],m->name_len,"%s", m->row_names[i]);
         }
         /* copy values  */
         for(j = 0; j < m->nrow;j++){
-   
                 for(i = 0; i < m->ncol;i++){
                         t->matrix[i][j] = m->matrix[j][i];
                 }
         }
-
-
-        
-        free_double_matrix(m);
-        
+        free_double_matrix(m);      
         return t;
 ERROR:
         return NULL;

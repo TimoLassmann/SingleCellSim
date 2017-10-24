@@ -7,6 +7,63 @@ AC_PROG_INSTALL
 
 # Checks for libraries.
 
+AC_PATH_PROG(GSL_CONFIG, gsl-config, no)
+
+AC_MSG_CHECKING([for GSL ])
+no_gsl=""
+if test "$GSL_CONFIG" = "no" ; then
+no_gsl=yes
+AC_MSG_RESULT([no])
+else
+GSL_VERSION=`$GSL_CONFIG --version`
+GSL_CFLAGS=`$GSL_CONFIG --cflags`
+GSL_LIBS=`$GSL_CONFIG --libs`
+
+AC_SUBST([GSL_VERSION])
+AC_SUBST([GSL_CFLAGS])
+AC_SUBST([GSL_LIBS])
+
+gsl_major_version=`echo $GSL_VERSION | sed 's/^\([[0-9]]*\).*/\1/'`
+if test "x${gsl_major_version}" = "x" ; then
+gsl_major_version=0
+fi
+
+gsl_minor_version=`echo $GSL_VERSION | \
+sed 's/^\([[0-9]]*\)\.\{0,1\}\([[0-9]]*\).*/\2/'`
+if test "x${gsl_minor_version}" = "x" ; then
+gsl_minor_version=0
+fi
+
+gsl_micro_version=`echo $GSL_VERSION | \
+sed 's/^\([[0-9]]*\)\.\{0,1\}\([[0-9]]*\)\.\{0,1\}\([[0-9]]*\).*/\3/'`
+if test "x${gsl_micro_version}" = "x" ; then
+gsl_micro_version=0
+fi
+
+
+CFLAGS="$CFLAGS $GSL_CFLAGS"
+LDFLAGS="$LDFLAGS $GSL_LIBS"
+
+
+AC_COMPILE_IFELSE(
+[AC_LANG_PROGRAM([[
+#include <gsl/gsl_types.h> 
+]],
+[[int i=0;]]
+)]
+,
+
+[AC_MSG_RESULT([yes (version $GSL_VERSION)])],
+
+[
+AC_MSG_ERROR([We could not compile a simple GSL example. See config.log.])
+]
+)
+
+
+fi
+
+
 # FIXME: Replace `main' with a function in `-lgslcblas':
 AC_CHECK_LIB([gslcblas], [cblas_sdot])
 # FIXME: Replace `main' with a function in `-lgsl':
@@ -47,13 +104,11 @@ AC_CHECK_FILE([$tldevel_check_f], [],[have_tldevel=no])
 
 
 if test "x${have_tldevel}" = xno; then
-   echo "------------------------------------------"
-   echo " Unable to find pthreads on this system.  "
-   echo " Building a single-threaded version.      "
-   echo "------------------------------------------"
-   AC_MSG_ERROR([ASFSAF])
+echo "------------------------------------------"
+echo " Unable to find tldevel on this system.   "
+echo "------------------------------------------"
+AC_MSG_ERROR([TLLIB])
 fi
-
 
 
 
@@ -76,29 +131,28 @@ no)  AC_DEFINE(DEBUGLEVEL, 0,[No debugging.]);;
 esac
 
 if test "$enable_debugging" != "no"; then
-        AC_DEFINE(DEBUG,1,[Defines debugging .])
-        CFLAGS="-ggdb -Wall -m64 -std=c99 $MEM $SIGNAL32"
+AC_DEFINE(DEBUG,1,[Defines debugging .])
+CFLAGS="-ggdb -Wall -m64 -std=c11 $MEM $SIGNAL32"
 else
-        CFLAGS="-O2 -funroll-loops -Wall -std=c99 $MEM $SIGNAL32"
-        DEBUG=0
+CFLAGS="-O2 -funroll-loops -Wall -std=c11 $MEM $SIGNAL32"
+DEBUG=0
 fi
 
 
-
 AC_ARG_ENABLE(valgrind-tests,
-    [--enable-valgrind-tests run self tests under valgrind],
-    opt_valgrind_tests="$enableval", opt_valgrind_tests="no")
-    
+[--enable-valgrind-tests run self tests under valgrind],
+opt_valgrind_tests="$enableval", opt_valgrind_tests="no")
+
 
 OPTS="-q --trace-children=no --error-exitcode=1 --leak-check=yes"
-  # Run self-tests under valgrind?
+# Run self-tests under valgrind?
 if test "$opt_valgrind_tests" = "yes"; then
-        AC_DEFINE(DEBUG,1,[Defines debugging .])   
-        CFLAGS="-pg -ggdb -pedantic -Wall -m64 -std=gnu11"
-	AC_CHECK_PROGS(VALGRIND, valgrind)
-	VALGRIND="$VALGRIND $OPTS"
+AC_DEFINE(DEBUG,1,[Defines debugging .])   
+CFLAGS="-pg -ggdb -pedantic -Wall -m64 -std=gnu11"
+AC_CHECK_PROGS(VALGRIND, valgrind)
+VALGRIND="$VALGRIND $OPTS"
 else
-	VALGRIND=
+VALGRIND=
 fi
 AC_MSG_CHECKING([whether self tests are run under valgrind])
 AC_MSG_RESULT($opt_valgrind_tests)

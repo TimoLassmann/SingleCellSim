@@ -31,6 +31,7 @@ struct double_matrix{
         uint8_t* label;
         int nrow;
         int ncol;
+        int name_len;
         int real_sample;
 };
 
