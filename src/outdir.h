@@ -5,7 +5,9 @@
 
 #define OUTDIR_CHECKPOINTS  "checks" 
 #define OUTDIR_LOG "logs"
-#define OUTDIR_RESULTS "results"
+#define OUTDIR_MODEL "model"
+#define OUTDIR_SIM "sim"
+
 
 
 #define LOGFILE "log.txt"

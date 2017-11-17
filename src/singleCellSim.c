@@ -10,6 +10,10 @@ struct unique_transcript_count{
         int alloc_size;
 };
 
+struct gene_ex{
+        char* name;
+        double expr; 
+};
 
 struct shared_data{
         struct parameters* param;
@@ -40,6 +44,7 @@ struct thread_data{
 int run_model_scs(struct parameters* param);
 
 int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,int target);
+int cmp_gene_ex_struct(const void *a, const void *b);
 
 int run_sim_scs(struct parameters* param);
 
@@ -99,7 +104,7 @@ int main (int argc, char * argv[])
 {
         struct parameters* param = NULL;
         tlog.echo_build_config();
-
+        
         if(argc == 1){
                 /* print help */
                 RUN(print_global_help(argc,argv));
@@ -113,18 +118,13 @@ int main (int argc, char * argv[])
                 RUN(run_model_scs(param));
         }else if(strncmp(argv[1],"sim",3) == 0){
                 RUNP(param = get_sim_param(argc,argv));
-
-                RUN(run_sim_scs(param));
-                
-                
+                RUN(run_sim_scs(param));                
         }else{
                 ERROR_MSG("Option %s not recognized.",argv[1]);
         }
-
         free_param(param);
         return EXIT_SUCCESS;
-ERROR:
-        
+ERROR:        
         free_param(param);
         return EXIT_FAILURE;
 }
@@ -135,18 +135,18 @@ int run_model_scs(struct parameters* param)
         struct double_matrix* m = NULL;
         
         char buffer[BUFFER_LEN];
-
+        
         RUN(create_output_directories(param->outdir));
         
-        RUN(set_log_file(param->outdir,"scs_net"));                
-
+        RUN(set_log_file(param->outdir,"scs_net"));
+        
         /* allocate shared data  */
         RUNP(bsd = init_shared_data(param));
-
+        
         /* create checkpoint... */
         snprintf(buffer, BUFFER_LEN, "%s/%s/",param->outdir,OUTDIR_CHECKPOINTS);
         DECLARE_CHK(MAIN_CHECK, buffer);
-
+        
         /* Read in counts..  */
         RUNP(m = read_double_matrix(param->infile,1,1));
         
@@ -158,18 +158,16 @@ int run_model_scs(struct parameters* param)
         LOG_MSG("Fit models.");
         snprintf(buffer, BUFFER_LEN, "infile: %s datadim:%d %d.",param->infile, m->ncol,m->nrow);
         RUN_CHECKPOINT(MAIN_CHECK,fit_models_to_table(bsd,m),buffer);
-
-
+        
         LOG_MSG("Write preliminart model parameters.");
         snprintf(buffer, BUFFER_LEN, "Write preliminary parameters.");
         RUN_CHECKPOINT(MAIN_CHECK,write_gigp_param_table_to_file(bsd),buffer);
-            
         
         LOG_MSG("Make growth curves.");
         /* fit curves, print and calculate S (estmated number of transcripts in samples.  */
         snprintf(buffer, BUFFER_LEN, "datadim:%d %d.",m->ncol,m->nrow);
         RUN_CHECKPOINT(MAIN_CHECK,fit_curves_make_growth_curve(bsd, m), buffer);
-
+        
         /* critical! writes estimated total number of transcripts per cell / sample  */
         snprintf(buffer, BUFFER_LEN, "Write parameters.");
         RUN_CHECKPOINT(MAIN_CHECK,write_gigp_param_table_to_file(bsd),buffer);
@@ -178,17 +176,14 @@ int run_model_scs(struct parameters* param)
         //RUN(print_double_matrix(bsd->gigp_param_out_table,stdout ,1,1));
         snprintf(buffer, BUFFER_LEN, "Calculate relative abundances.");
         RUN_CHECKPOINT(MAIN_CHECK,fill_rel_abundance_matrix(bsd,m),buffer);
-
+        
         /* calculare X genes in low 10%, low 20% etc... */
-
         snprintf(buffer, BUFFER_LEN, "Calculate fingerprint based on top genes.");
         RUN_CHECKPOINT(MAIN_CHECK,fingerprints(bsd,m), buffer);
-
-
+        
         free_double_matrix(m);
         free_shared_data(bsd);
         DESTROY_CHK(MAIN_CHECK);
-
         return OK;
         exit(0);
         
@@ -216,22 +211,22 @@ ERROR:
 int run_sim_scs(struct parameters* param)
 {
         char buffer[BUFFER_LEN];
-
+        
         struct shared_data* bsd = NULL;
         struct double_matrix* m = NULL;
-
+        
         int i,j;
         int hits = 0;
         
         ASSERT(param != NULL,"No parameters.");
-
+        
         RUNP(bsd = init_shared_data(param));
         /* read parameters - why? dunno  */
         RUN(read_gigp_param_table_from_file(bsd));
         /* read rel_abundance  */
         if(!bsd->rel_abundances){
                 LOG_MSG("Reading relative abundances.");
-                snprintf(buffer, BUFFER_LEN, "%s/%s/Relabundances.csv",bsd->param->outdir,OUTDIR_RESULTS);
+                snprintf(buffer, BUFFER_LEN, "%s/%s/Relabundances.csv",bsd->param->outdir,OUTDIR_MODEL);
                 LOG_MSG("Read from file: %s",buffer);
                 RUNP(bsd->rel_abundances = read_double_matrix(buffer,1,1));
                 RUNP(bsd->rel_abundances = transpose_double_matrix(bsd->rel_abundances));
@@ -283,7 +278,6 @@ int run_sim_scs(struct parameters* param)
         /* highlight genes...j */
         
         free_shared_data(bsd);
- 
         return OK;
 ERROR:
         free_shared_data(bsd);
@@ -295,14 +289,17 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
 {
         char buffer[BUFFER_LEN];
         struct double_matrix* sim_table = NULL;
+        struct gene_ex** sort_genes = NULL;
         double* rel_abundances = NULL;
         double* cell_abundance = NULL;
+        FILE* out_ptr = NULL;
+
         double CV;
         double libdepth;
         double drop_k;
 
         
-        int i,j; 
+        int i,j,c; 
         int num_genes; 
         int num_cells;
         int simulated_read_depth;
@@ -325,7 +322,10 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
         simulated_read_depth = bsd->param->simulated_read_depth;
         CV = bsd->param->CV;
         drop_k = bsd->param->drop_Michaelisconstant;
-               
+
+
+        
+        
         /* red in relative abundancs */
         MMALLOC(cell_abundance, sizeof(double) * num_genes);
 
@@ -341,10 +341,34 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
                 snprintf(sim_table->col_names[i],m->name_len,"Cell%d",i+1);
         }
         for(j = 0; j < num_genes;j++){
-                snprintf(sim_table->row_names[j],m->name_len,"Gene%d",j+1);
+                snprintf(sim_table->row_names[j],m->name_len,"Blankgene%d",j+1);
         }
 
+        /* sort genes in target sample by expression */
+        MMALLOC(sort_genes,sizeof(struct gene_ex*) * m->nrow);
+        for(i = 0; i < m->nrow;i++){
+                sort_genes[i] = NULL;
+                MMALLOC(sort_genes[i],sizeof(struct gene_ex));
+                sort_genes[i]->name = m->row_names[i];
+                sort_genes[i]->expr = m->matrix[i][target];
+        }
+        qsort(sort_genes, m->nrow, sizeof(struct gene_ex*), cmp_gene_ex_struct); 
 
+        j = num_genes-1; 
+        for(i = 0; i < m->nrow;i++){
+                if(j == 0){
+                        break; 
+                }
+                for(c = 0; c < bsd->param->num_gene_targets;c++){
+                        if(strstr(sort_genes[i]->name, bsd->param->gene_names[c])!= NULL){
+                                snprintf(sim_table->row_names[j],m->name_len,"%s",sort_genes[i]->name);
+                        }
+                }
+                j--;
+        }
+                
+
+        
         /* fill expression table  */
 
         //Calculate tpm..
@@ -367,34 +391,22 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
 
                 }
                 gsl_ran_discrete_t *sample_abundances = gsl_ran_discrete_preproc (num_genes, cell_abundance);
-
-
                 for(j = 0;j < simulated_read_depth;j++){
                         sim_table->matrix[(int)gsl_ran_discrete(rfff, sample_abundances)][i] += 1;
                 }
                 gsl_ran_discrete_free(sample_abundances);
         }
-        //random deletion...
-        /*for(i = 0; i < ncells;i++){
-          for(j = 0; j < num_genes;j++){
-          if(gsl_rng_uniform_pos(rfff) < loss){
-          table[i][j] = 0;
-          }
-          }
-          }
 
-
-        snprintf(buffer, BUFFER_LEN, "%s/%s/extable_%d_%d_CV%f.csv",bsd->param->outdir,OUTDIR_RESULTS,num_cells, simulated_read_depth,CV);
-        RUNP(in_ptr = fopen(buffer, "w"));
-        RUN(print_double_matrix(m,in_ptr, 1,1));
-        fclose(in_ptr);
-        */
+        snprintf(buffer, BUFFER_LEN, "%s/%s/extable_%s_%d_%d_CV%f.csv",bsd->param->outdir,OUTDIR_SIM,bsd->rel_abundances->row_names[target],num_cells, simulated_read_depth,CV);
+        LOG_MSG("Write to %s\n",buffer);
+        RUNP(out_ptr = fopen(buffer, "w"));
+        RUN(print_double_matrix(sim_table,out_ptr, 1,1));
+        fclose(out_ptr);
+        
         gsl_rng_free(rfff);
         MFREE(cell_abundance);
         
-        free_double_matrix(sim_table);
-
-        
+        free_double_matrix(sim_table);        
         return OK;
 ERROR:
         return FAIL; 
@@ -428,7 +440,7 @@ int fingerprints(struct shared_data* bsd, struct double_matrix* m)
         
         if(!bsd->rel_abundances){
                 LOG_MSG("Reading relative abundances.");
-                snprintf(buffer, BUFFER_LEN, "%s/%s/Relabundances.csv",bsd->param->outdir,OUTDIR_RESULTS);
+                snprintf(buffer, BUFFER_LEN, "%s/%s/Relabundances.csv",bsd->param->outdir,OUTDIR_MODEL);
                 LOG_MSG("Read from file: %s",buffer);
                 RUNP(bsd->rel_abundances = read_double_matrix(buffer,1,1));
         }
@@ -465,7 +477,7 @@ int fingerprints(struct shared_data* bsd, struct double_matrix* m)
                 }
         }
         
-        snprintf(buffer, BUFFER_LEN, "%s/%s/fingerprint.csv",bsd->param->outdir,OUTDIR_RESULTS);
+        snprintf(buffer, BUFFER_LEN, "%s/%s/fingerprint.csv",bsd->param->outdir,OUTDIR_MODEL);
         LOG_MSG("Writing to file: %s",buffer);
         RUNP(file_ptr = fopen(buffer,"w"));
         
@@ -494,7 +506,10 @@ int fit_models_to_table(struct shared_data* bsd, struct double_matrix* m)
                 LOG_MSG("Working on sample:%s.",m->col_names[i]);
                 /* Turn counts into frequency vector. */
                 RUN(get_unique_transcript_vector(bsd,m,i));
-                //fprintf(stderr,"%s %d\n",m->col_names[i],bsd->utc->max);
+                if(bsd->utc->max > 1000000){
+                        WARNING_MSG("Super high abundant transcript detected: %d.", bsd->utc->max);
+                        WARNING_MSG("All steps may take considerable amount of time from this point on.");
+                }
                 /* do modelling...  */
                 RUN(fit_model(bsd)); 
                 /* enter_estimated parameters in table..   */
@@ -575,7 +590,7 @@ int fill_rel_abundance_matrix(struct shared_data* bsd, struct double_matrix* m)
                 }
         }
         
-        snprintf(buffer, BUFFER_LEN, "%s/%s/Relabundances.csv",bsd->param->outdir,OUTDIR_RESULTS);
+        snprintf(buffer, BUFFER_LEN, "%s/%s/Relabundances.csv",bsd->param->outdir,OUTDIR_MODEL);
         LOG_MSG("Write to file: %s",buffer);
         RUNP(out_ptr = fopen(buffer, "w" ));
         
@@ -588,7 +603,7 @@ int fill_rel_abundance_matrix(struct shared_data* bsd, struct double_matrix* m)
                 }
         }
         
-        snprintf(buffer, BUFFER_LEN, "%s/%s/Relabundances_sum.csv",bsd->param->outdir,OUTDIR_RESULTS);
+        snprintf(buffer, BUFFER_LEN, "%s/%s/Relabundances_sum.csv",bsd->param->outdir,OUTDIR_MODEL);
         LOG_MSG("Write to file: %s",buffer);
         RUNP(out_ptr = fopen(buffer, "w" ));
         
@@ -667,7 +682,7 @@ int fit_curves_make_growth_curve(struct shared_data* bsd, struct double_matrix* 
                 RUN(enter_gigp_param_into_table(bsd->gigp_param_out_table,bsd->gigp_param_best,i));
                 
                 /* print fitted file...  */
-                snprintf(buffer, BUFFER_LEN, "%s/%s/GIGP_fit_%s.csv",bsd->param->outdir,OUTDIR_RESULTS,m->col_names[i]);
+                snprintf(buffer, BUFFER_LEN, "%s/%s/GIGP_fit_%s.csv",bsd->param->outdir,OUTDIR_MODEL,m->col_names[i]);
                 LOG_MSG("Write to file: %s",buffer);
                 RUNP(out_ptr = fopen(buffer, "w" ));
                 
@@ -680,7 +695,7 @@ int fit_curves_make_growth_curve(struct shared_data* bsd, struct double_matrix* 
                 MFREE(fitted);
                 
                 /* print growth curve */
-                snprintf(buffer, BUFFER_LEN, "%s/%s/GIGP_growth_curve_%s.csv",bsd->param->outdir,OUTDIR_RESULTS,m->col_names[i]);
+                snprintf(buffer, BUFFER_LEN, "%s/%s/GIGP_growth_curve_%s.csv",bsd->param->outdir,OUTDIR_MODEL,m->col_names[i]);
                 LOG_MSG("Writing to: %s",buffer);
                 RUNP(out_ptr = fopen(buffer, "w" ));
                 sum = bsd->gigp_param_best->N;
@@ -719,7 +734,7 @@ int read_gigp_param_table_from_file(struct shared_data* bsd)
                 WARNING_MSG("GIGP param table not empty will delete and load from file...");
                 free_double_matrix(bsd->gigp_param_out_table);
         }
-        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.csv");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL,"GIGP_parameters.csv");
         RUNP(bsd->gigp_param_out_table =read_double_matrix(buffer,1,1));
         
         return OK;
@@ -732,7 +747,7 @@ int write_gigp_param_table_to_file(struct shared_data* bsd)
         char buffer[BUFFER_LEN];
         FILE* file_ptr = NULL;
         ASSERT(bsd != NULL, "No shared parameters.");
-        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.csv");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL,"GIGP_parameters.csv");
         RUNP(file_ptr = fopen(buffer,"w"));
         RUN(print_double_matrix(bsd->gigp_param_out_table,file_ptr ,1,1));
 
@@ -828,7 +843,7 @@ int sample_GIGP_same_depth_as_input(struct shared_data* bsd)
 
         MMALLOC(rel_abundance, sizeof(double) * (int) (gigp_param->S+1));
 
-        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_rel_abundances.txt");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL,"GIGP_rel_abundances.txt");
 
         RUNP(file_ptr = fopen(buffer, "r"));
         for(i = 0; i < (int)(gigp_param->S+1) ;i++){
@@ -875,7 +890,7 @@ int sample_GIGP_same_depth_as_input(struct shared_data* bsd)
                                         f++;
                                 }
                         }
-                        snprintf(buffer, BUFFER_LEN, "%s/%s/GIGP_sampled_%d.csv",bsd->param->outdir,OUTDIR_RESULTS,i);
+                        snprintf(buffer, BUFFER_LEN, "%s/%s/GIGP_sampled_%d.csv",bsd->param->outdir,OUTDIR_MODEL,i);
                         RUNP(file_ptr = fopen(buffer,"w"));
                         for(c = 1;c <= max_transcript_frequency;c++){
                                 if(fx_unique_transcript_count[c]){
@@ -910,7 +925,7 @@ int simulate_expression_table(struct shared_data* bsd)
 
         ASSERT(bsd != NULL,"No shared data.");
 
-        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.txt");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL,"GIGP_parameters.txt");
         RUN(read_fitted_param_from_file( bsd->gigp_param_best,buffer));
 
         bsd->param->num_genes = (int)(bsd->gigp_param_best->S +1);
@@ -925,7 +940,7 @@ int simulate_expression_table(struct shared_data* bsd)
         MMALLOC(rel_abundance, sizeof(double) * (int) num_genes);
         MMALLOC(cell_abundance, sizeof(double) * num_genes);
 
-        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_rel_abundances.txt");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL,"GIGP_rel_abundances.txt");
 
         RUNP(in_ptr = fopen(buffer, "r"));
         for(i = 0; i < num_genes ;i++){
@@ -990,7 +1005,7 @@ int simulate_expression_table(struct shared_data* bsd)
           }*/
 
 
-        snprintf(buffer, BUFFER_LEN, "%s/%s/extable_%d_%d_CV%f.csv",bsd->param->outdir,OUTDIR_RESULTS,num_cells, simulated_read_depth,CV);
+        snprintf(buffer, BUFFER_LEN, "%s/%s/extable_%d_%d_CV%f.csv",bsd->param->outdir,OUTDIR_MODEL,num_cells, simulated_read_depth,CV);
         RUNP(in_ptr = fopen(buffer, "w"));
         RUN(print_double_matrix(m,in_ptr, 1,1));
         fclose(in_ptr);
@@ -1024,7 +1039,7 @@ int calculate_rel_frequencies(struct shared_data* bsd)
         ASSERT(bsd != NULL,"No shared data.");
 
 
-        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.txt");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL,"GIGP_parameters.txt");
         RUN(read_fitted_param_from_file( bsd->gigp_param_best,buffer));
 
         MMALLOC(rel_abundance, sizeof(double) * (int) (bsd->gigp_param_best->S+1));
@@ -1042,7 +1057,7 @@ int calculate_rel_frequencies(struct shared_data* bsd)
         qsort(rel_abundance, (int)bsd->gigp_param_best->S, sizeof(double), compare_double);
 
 
-        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_rel_abundances.txt");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL,"GIGP_rel_abundances.txt");
 
         RUNP(out_ptr = fopen(buffer, "w"));
         for(i = 0; i <(int)(bsd->gigp_param_best->S+1);i++){
@@ -1076,7 +1091,7 @@ int print_fit(struct shared_data* bsd)
 
         ASSERT(bsd != NULL,"No shared memory.");
 
-        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.txt");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL,"GIGP_parameters.txt");
 
         RUN(read_fitted_param_from_file(bsd->gigp_param_best,buffer));
 
@@ -1084,7 +1099,7 @@ int print_fit(struct shared_data* bsd)
         RUN(fill_fitted_curve(fitted ,bsd->utc->max, bsd->gigp_param_best));
 
         /* print fitted file...  */
-        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_fit.csv");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL,"GIGP_fit.csv");
         LOG_MSG("REading from: %s",buffer);
 
         RUNP(out_ptr = fopen(buffer, "w" ));
@@ -1095,7 +1110,7 @@ int print_fit(struct shared_data* bsd)
         }
         fclose(out_ptr);
 
-        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_growth_curve.csv");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL,"GIGP_growth_curve.csv");
         LOG_MSG("Writing to: %s",buffer);
         RUNP(out_ptr = fopen(buffer, "w" ));
         sum = bsd->gigp_param_best->N;
@@ -1112,7 +1127,8 @@ int print_fit(struct shared_data* bsd)
         fclose(out_ptr);
         bsd->gigp_param_best->N = sum;
 
-        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_RESULTS,"GIGP_parameters.txt");
+        snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL
+                 ,"GIGP_parameters.txt");
         RUN(write_fitted_param_to_file( bsd->gigp_param_best,buffer));
 
         MFREE(fitted);
@@ -1651,3 +1667,14 @@ double* pick_abundances(struct gigp_param* gigp_param, double* random, double* a
 
 
 
+int cmp_gene_ex_struct(const void *a, const void *b)
+{
+        struct gene_ex* const *one = a;
+        struct gene_ex* const *two = b;
+        if ((*one)->expr >= (*two)->expr){
+                return -1;
+        }else{
+                return 1;
+        }
+        return 1;
+}
