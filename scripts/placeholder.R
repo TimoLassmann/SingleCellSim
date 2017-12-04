@@ -1,4 +1,23 @@
 
+
+
+stats = read.csv("GIGP_parameters.csv", header = T, row.names = 1) 
+stats = t(stats) 
+cond =   ifelse(grepl("Normal", row.names(stats)),"Normal","Tumour")
+stats = cbind(stats,cond) 
+stats = as.data.frame(stats) 
+stats$S = as.numeric(as.character(stats$S))
+ggplot(as.data.frame(stats), aes(x=cond, y= S)) + geom_violin() +  ylab("Estimated unique number of transcipts")+  labs(title = "KICH")
+ggsave("violin_S.pdf", width = 20, height = 20, units = "cm" )
+ggplot(as.data.frame(stats), aes(x=cond, y= S)) + geom_boxplot() + geom_jitter(width = 0.2) +  ylab("Estimated unique number of transcipts")+  labs(title = "KICH") 
+ggsave("bar_jitter_S.pdf", width = 20, height = 20, units = "cm")
+
+
+
+
+
+theme_grey(base_size = 18) 
+
 // plot fit
 fit = read.csv("GIGP_fit.csv",header=F,row.names=1)
 plot(fit[,1], log = "xy")
