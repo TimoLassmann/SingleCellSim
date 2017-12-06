@@ -65,7 +65,6 @@ void* do_fit_model(void *threadarg);
 int enter_gigp_param_into_table(struct double_matrix* table, struct gigp_param* best,int col);
 int read_gigp_param_from_table(struct double_matrix* table, struct gigp_param* best,int col);
 
-
 int write_gigp_param_table_to_file(struct shared_data* bsd);
 int read_gigp_param_table_from_file(struct shared_data* bsd);
         
@@ -444,8 +443,39 @@ int fingerprints(struct shared_data* bsd, struct double_matrix* m)
                 LOG_MSG("Read from file: %s",buffer);
                 RUNP(bsd->rel_abundances = read_double_matrix(buffer,1,1));
         }
-        
+
+
+        /* convert distrete probabilities of 1 .. S genes into a 0 (low
+         * expressed) - 1 ( high expressed vector) with X intervals */
         /* parsing top percentages .  */
+        double resolution = 100;
+        
+        RUNP(f = alloc_double_matrix(m->ncol, resolution,m->name_len));
+        for(i = 0; i < m->ncol;i++){
+                snprintf(f->col_names[i],m->name_len, "%s",m->col_names[i]);
+        }
+        
+        for(i = 0; i < resolution;i++){
+                snprintf(f->row_names[i],m->name_len, "Prob%0.2f_%0.2f", (double) i / resolution,(double) (i+1) / resolution);
+        }
+
+        for(i = 0; i < m->ncol;i++){
+                int S = bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i];
+                for(j = 0; j <= S ;j++){
+                        f->matrix[ (int)floor ((double) (j) / (double) (S+0.0001) * resolution) ][i] += bsd->rel_abundances->matrix[j][i];
+                }
+        }
+        snprintf(buffer, BUFFER_LEN, "%s/%s/fingerprint_dist.csv",bsd->param->outdir,OUTDIR_MODEL);
+        LOG_MSG("Writing to file: %s",buffer);
+        RUNP(file_ptr = fopen(buffer,"w"));
+        
+        print_double_matrix(f,file_ptr,1,1);
+        
+        fclose(file_ptr);
+        
+        free_double_matrix(f);
+        f = NULL;
+        
         RUNP(f = alloc_double_matrix(m->ncol,(max_genes / step + 1),m->name_len));
         
         for(i = 0; i < m->ncol;i++){
@@ -609,6 +639,9 @@ int fill_rel_abundance_matrix(struct shared_data* bsd, struct double_matrix* m)
         
         RUN(print_double_matrix(bsd->rel_abundances,out_ptr,1,1));
         fclose(out_ptr);
+
+        free_double_matrix(bsd->rel_abundances);
+        bsd->rel_abundances = NULL;
         
         for(i = 0; i < m->ncol;i++){
                 MFREE(td[i]->vector);

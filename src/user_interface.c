@@ -18,6 +18,7 @@
 
 #include "user_interface.h"
 
+struct parameters* init_param(void);
 int byg_count(char* pattern, char* text);
 int print_model_help(int argc, char * argv[]);
 int print_sim_help(int argc, char * argv[]);
@@ -48,6 +49,7 @@ int print_model_help(int argc, char * argv[])
         return OK;
 }
 
+
 struct parameters* get_model_param(int argc, char * argv[])
 {
         struct parameters* param = NULL;     
@@ -64,17 +66,9 @@ struct parameters* get_model_param(int argc, char * argv[])
 
         help = 0;
         c = 0;
-        
-        MMALLOC(param, sizeof(struct parameters));
-        param->infile = NULL;
-        param->outdir = NULL;
-        param->num_threads = 8;
-        param->num_genes = 0;
-        param->num_cells = 0;
-        param->simulated_read_depth = 80000;
-        param->CV = 0.75;
-        param->drop_Michaelisconstant = 10.0;
 
+        RUNP(param= init_param());
+        
         while (1){
                 static struct option long_options[] ={
                         {"sample",required_argument,0,OPT_SAMPLE},
@@ -181,20 +175,8 @@ struct parameters* get_sim_param(int argc, char * argv[])
         
         help = 0;
         c = 0;
-        
-        MMALLOC(param, sizeof(struct parameters));
-        param->infile = NULL;
-        param->outdir = NULL;
-        param->sample_names = NULL;
-        param->gene_names = NULL;
-        param->num_cells = 0;
-        param->num_samples = 0;
-        param->num_threads = 8;
-        param->num_genes = 0;
-        param->num_cells = 96;
-        param->simulated_read_depth = 80000;
-        param->CV = 0.75;
-        param->drop_Michaelisconstant = 10.0;
+
+        RUNP(param= init_param());
         
         while (1){
                 static struct option long_options[] ={
@@ -328,6 +310,29 @@ struct parameters* get_sim_param(int argc, char * argv[])
 ERROR:
         LOG_MSG("Something went wrong. Try using the -h option.");
         free_param(param);     
+        return NULL;
+}
+
+
+struct parameters* init_param(void)
+{
+        struct parameters* param = NULL;
+        MMALLOC(param, sizeof(struct parameters));
+        param->sample_names = NULL;
+        param->gene_names = NULL;
+        param->infile = NULL;
+        param->outdir = NULL;
+        param->num_threads = 8;
+        param->num_genes = 0;
+        param->num_gene_targets = 0;
+        param->simulated_read_depth = 80000;
+        param->CV = 0.75;
+        param->drop_Michaelisconstant = 10.0;
+        param->num_samples = 0;
+        param->num_cells = 96;
+        
+        return param;
+ERROR:
         return NULL;
 }
 

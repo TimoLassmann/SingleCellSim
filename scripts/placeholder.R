@@ -1,4 +1,6 @@
 
+library(ggplot2);
+library(gplots);
 
 
 stats = read.csv("GIGP_parameters.csv", header = T, row.names = 1) 
@@ -7,9 +9,9 @@ cond =   ifelse(grepl("Normal", row.names(stats)),"Normal","Tumour")
 stats = cbind(stats,cond) 
 stats = as.data.frame(stats) 
 stats$S = as.numeric(as.character(stats$S))
-ggplot(as.data.frame(stats), aes(x=cond, y= S)) + geom_violin() +  ylab("Estimated unique number of transcipts")+  labs(title = "KICH")
+ggplot(as.data.frame(stats), aes(x=cond, y= S)) + geom_violin() +  ylab("Estimated unique number of transcipts")+  labs(title = "BLCA")
 ggsave("violin_S.pdf", width = 20, height = 20, units = "cm" )
-ggplot(as.data.frame(stats), aes(x=cond, y= S)) + geom_boxplot() + geom_jitter(width = 0.2) +  ylab("Estimated unique number of transcipts")+  labs(title = "KICH") 
+ggplot(as.data.frame(stats), aes(x=cond, y= S)) + geom_boxplot() + geom_jitter(width = 0.2) +  ylab("Estimated unique number of transcipts")+  labs(title = "BLCA") 
 ggsave("bar_jitter_S.pdf", width = 20, height = 20, units = "cm")
 
 

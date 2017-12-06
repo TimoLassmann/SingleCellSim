@@ -1,0 +1,172 @@
+#+LATEX_CLASS: report
+#+OPTIONS:  toc:nil
+#+OPTIONS: H:4
+#+LATEX_CMD: xelatex
+#+OPTIONS: ^:nil
+\Author{Timo La\ss mann}
+\DocumentID{src_sh[:value verbatim]{shasum -a 256 rrarefy_analysis.org | awk '{print $1}' }} 
+
+* Sparse data analysis   
+
+How robust is my algorithm to increasingly sparsely sampled transcriptome data? 
+
+** Method 
+
+Use the rrarefy function of the vegan R package to sub-sample transcriptome
+count data. Append sparse data to original data frame and use as input to scs. 
+
+This time I will use org-mode tangle / noweb functionality to generate stand
+along R scripts. 
+
+
+** How to use this file 
+
+1. Load in emacs org-mode 
+2. tangle with ctrl+c ctrl+v t 
+3. upload to server; run analysis
+
+** Analysis script
+
+   #+BEGIN_SRC R :shebang #!/usr/bin/env Rscript :tangle rrarefy_matrix.R :noweb yes :exports source results: code 
+     <<libs>>
+     <<options>>
+
+     counts = read.csv(infile,header = T,row.names = 1);
+
+     min_counts = min(colSums(counts));
+
+     if(min_counts < samplesize){          
+         stop(paste("Min sample count (",min_counts,") is smaller than subsample size.\n"), call.=FALSE)      
+     }
+
+     test  = rrarefy(t(counts),sample = samplesize);  
+     test = t(test);
+
+     names = paste0(colnames(test),paste("_downsampled_to_",samplesize, sep = ""))
+
+     colnames(test) = names;
+     head(test)
+     print(paste(infile,samplesize))
+     
+     write.csv(test,outfile,quote = FALSE);
+      
+   #+END_SRC
+
+
+** Boring code blocks  
+
+*** Libraries 
+Load libraries required for analysis - just vegan I think.. 
+
+#+NAME: libs
+#+BEGIN_SRC R :exports code :results none
+
+library("vegan")
+library("optparse")
+
+#+END_SRC
+
+*** Options 
+
+Code to parse command line options properly. 
+
+#+NAME: options
+#+BEGIN_SRC R :exports code :results none
+
+  option_list = list(
+      make_option(c("-i", "--infile"), type="character", default=NULL,
+                  help="input count file.", metavar="character"),  
+      make_option(c("-o", "--outfile"), type="character", default=NULL,
+                  help="output count file.", metavar="character"),  
+
+      make_option(c("-s","--sample"),type="integer", default=NULL,help = "Subsample size")
+
+  ); 
+
+  opt_parser = OptionParser(option_list=option_list,
+                            description = "\nThis script takes in a gene count file and performs sub-sampling using the rrarefy function of the vegan R package.",
+                            epilogue = "Example:\n\n -i <countmatrix> -o <outfile>-s 1000   \n\n");
+  opt = parse_args(opt_parser);
+
+
+  if (is.null(opt$infile)){
+      print_help(opt_parser)
+      stop("No input file given.\n", call.=FALSE)
+  }
+  if (is.null(opt$outfile)){
+      print_help(opt_parser)
+      stop("No output file given.\n", call.=FALSE)
+  }
+
+
+  if (is.null(opt$sample)){
+      print_help(opt_parser)
+      stop("No subsample size given.\n", call.=FALSE)
+  }
+  infile = opt$infile
+  outfile = opt$outfile
+  samplesize = opt$sample
+
+#+END_SRC
+
+** Convenience scripts to keep everything synchronized and automated
+
+1) Makefile 
+
+#+BEGIN_SRC makefile :tangle Makefile
+
+all:
+	./tangleorgs.sh rrarefy_analysis.org
+clean:
+	rm 
+
+#+END_SRC
+
+
+*** script to tangle analysis org documents from command line 
+
+#+BEGIN_SRC sh :tangle tangleorgs.sh :tangle-mode (identity #o700) :padline no
+#!/bin/sh
+# -*- mode: shell-script -*-
+#
+# tangle files with org-mode
+#
+DIR=`pwd`
+FILES=""
+
+function usage()
+{
+cat <<EOF
+
+This script will:
+
+1) tangle the input file 
+
+usage: $0   <a.org> <b.org> ...
+EOF
+exit 1;
+}
+
+while getopts i:  opt
+do
+case ${opt} in
+i) INDIR=${OPTARG};;
+*) usage;;
+esac
+done
+     
+# wrap each argument in the code required to call tangle on it
+for i in $@; do
+   FILES="$FILES \"$i\""
+done
+
+if [ "${FILES}" = "" ]; then usage; fi
+     
+emacs -Q --batch \
+  --eval "(progn (require 'org)(require 'ob)(require 'ob-tangle)
+  (setq org-src-preserve-indentation t)
+  (mapc (lambda (file)
+  (find-file (expand-file-name file \"$DIR\"))
+  (org-babel-tangle)
+  (kill-buffer)) '($FILES)))" 2>&1 |grep -i tangled
+#+END_SRC
