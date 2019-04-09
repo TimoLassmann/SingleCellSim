@@ -69,9 +69,13 @@ AC_CHECK_LIB([gslcblas], [cblas_sdot])
 # FIXME: Replace `main' with a function in `-lgsl':
 
 
-AC_CHECK_LIB([gsl],[gsl_integration_qag],[],[AC_MSG_WARN([gsl library missing - some programs will not be compiled!])])
+AC_CHECK_LIB([gsl],[gsl_integration_qag],[],[AC_MSG_ERROR([gsl library missing!])])
 
 AM_CONDITIONAL([GOT_GSL], [ test "$ac_cv_lib_gsl_gsl_integration_qag" = "yes"])
+
+if test "$ac_cv_lib_gsl_gsl_integration_qag" = "no";then
+AC_MSG_ERROR([ERROR: GSL library was not found on your system.])
+fi
 
 # FIXME: Replace `main' with a function in `-lm':
 AC_CHECK_LIB([m], [log])
@@ -91,7 +95,8 @@ AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
 AC_FUNC_MALLOC
 AC_FUNC_REALLOC
 AC_CHECK_FUNCS([getcwd mkdir pow sqrt])
-
+AC_CHECK_FUNCS([floor])
+AC_CHECK_FUNCS([strstr])
 
 AC_CONFIG_FILES([Makefile src/Makefile])
 
@@ -166,10 +171,3 @@ ac_configure_args="$ac_configure_args PACKAGE_VERSION=$PACKAGE_VERSION   PACKAGE
 AC_CONFIG_SUBDIRS([tldevel])
 
 AC_OUTPUT
-
-
-
-if test "$ac_cv_lib_gsl_gsl_integration_qag" = "no";then
-echo "     WARNING: GSL library was not found on your system."
-echo "     Programs: singleCellSim will not be compiled."
-fi
