@@ -27,8 +27,11 @@ lines(fit[,2],col = c("red"))
 
 // add sim data at same depth.
 
+
 samples = read.table("GIGP_sampled_2214851.csv",header = F)
-points(samples[,2],col = c("green"),pch= 20)
+points(samples[,2],col = 
+
+c("green"),pch= 20)
 
 
 
@@ -104,7 +107,7 @@ sum(x !=0);
 }
 
 
-mat = read.csv("extable_CPhII001_CA8WCANXX_ACATTA_L006_R1.fastq.bam_96_80000_CV0.750000.csv",header = T,row.names = 1) 
+mat = read.csv("extable_AB01_96_80000_CV0.750000.csv",header = T,row.names = 1) 
 y = mat;
 mean = apply(y,1,nzmean)
 count <- apply(y,1, nzcount)
@@ -138,6 +141,8 @@ ggsave("Simulation80Kreadsprecell.pdf", width = 40, height = 40, units = "cm")
 
 mat = read.csv("genecounts.csv",header =T , row.names = 1) 
 tmp <-with(mat, aggregate(x = mat[,1:111] , by=list(Symbol), FUN=median))
+
+
 
 out = as.data.frame(apply(tmp[,2:ncol(tmp)],1, median, na.rm = TRUE))
 rownames(out) = tmp[,1] 

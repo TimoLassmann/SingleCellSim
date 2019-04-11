@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+
+
 #include <dirent.h>
 #include <unistd.h>
 
@@ -43,17 +45,17 @@ ERROR:
 
 int set_log_file(char* root, char* name)
 {
-        char buffer[BUFFER_LEN];
+        char buffer[BUFFER_LEN<<1];
         char out_root_dir[BUFFER_LEN];
         snprintf(out_root_dir, BUFFER_LEN, "%s/" ,root);
-        snprintf(buffer, BUFFER_LEN, "%s%s/%s.log",out_root_dir,OUTDIR_LOG,name);
+        snprintf(buffer, BUFFER_LEN<<1, "%s%s/%s.log",out_root_dir,OUTDIR_LOG,name);
 
         FILE* test_ptr = NULL;
 
         RUNP(test_ptr = fopen(buffer, "w"));
         fclose(test_ptr);
 
-        tlog.set_logfile(buffer);
+        //tlog.set_logfile(buffer);
 
 
 
@@ -66,7 +68,7 @@ ERROR:
 int create_output_directories(char* root)
 {
         //struct stat st = {0};
-        char buffer[BUFFER_LEN];
+        char buffer[BUFFER_LEN<<1];
         char out_root_dir[BUFFER_LEN];
 
         //create main output directory.
@@ -81,21 +83,17 @@ int create_output_directories(char* root)
           ERROR_MSG("Directory %s already exists.",out_root_dir);
           }*/
 
-        snprintf(buffer, BUFFER_LEN, "%s%s/",out_root_dir,OUTDIR_MODEL);
+        snprintf(buffer, BUFFER_LEN<<1, "%s%s/",out_root_dir,OUTDIR_MODEL);
         RUN(create_dir(buffer,1));
 
-        snprintf(buffer, BUFFER_LEN, "%s%s/",out_root_dir,OUTDIR_SIM);
+        snprintf(buffer, BUFFER_LEN<<1, "%s%s/",out_root_dir,OUTDIR_SIM);
         RUN(create_dir(buffer,1));
 
-        
-        snprintf(buffer, BUFFER_LEN, "%s%s/",out_root_dir,OUTDIR_CHECKPOINTS);
+        snprintf(buffer, BUFFER_LEN<<1, "%s%s/",out_root_dir,OUTDIR_CHECKPOINTS);
         RUN(create_dir(buffer,1));
 
-        snprintf(buffer, BUFFER_LEN, "%s%s/",out_root_dir,OUTDIR_LOG);
+        snprintf(buffer, BUFFER_LEN<<1, "%s%s/",out_root_dir,OUTDIR_LOG);
         RUN(create_dir(buffer,1));
-
-
-
 
         // create sub_directories;
 
@@ -123,13 +121,13 @@ ERROR:
 int check_if_output_directories_exists(char* root)
 {
         struct stat st = {0};
-        char buffer[BUFFER_LEN];
+        char buffer[BUFFER_LEN<<1];
         char out_root_dir[BUFFER_LEN];
 
         snprintf(out_root_dir, BUFFER_LEN, "%s/" ,root);
         //test if root is there
         if (stat(out_root_dir, &st) != -1) {
-                snprintf(buffer, BUFFER_LEN, "%s%s/",out_root_dir,OUTDIR_CHECKPOINTS);
+                snprintf(buffer, BUFFER_LEN<<1, "%s%s/",out_root_dir,OUTDIR_CHECKPOINTS);
                 if (stat(buffer, &st) == -1) {
                         ERROR_MSG("%d not found.",buffer );
                 }
@@ -168,7 +166,7 @@ char**  get_files_names(char* directory, char* suffix, char** list, int* num_fil
         }
 
         while((entry = readdir(dp)) != NULL) {
-                lstat(entry->d_name,&statbuf);
+                stat(entry->d_name,&statbuf);
                 if(S_ISDIR(statbuf.st_mode)) {
                         /* Found a directory, but ignore . and .. */
                         if(strcmp(".",entry->d_name) == 0 ||

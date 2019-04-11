@@ -26,22 +26,22 @@ int print_sim_help(int argc, char * argv[]);
 int print_global_help(int argc, char * argv[])
 {
         const char usage[] = " <command>";
-        fprintf(stdout,"\nUsage: %s %s\n\n",basename(argv[0]) ,usage);	
+        fprintf(stdout,"\nUsage: %s %s\n\n",basename(argv[0]) ,usage);
         fprintf(stdout,"Commands:\n\n");
-	
+
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"model","Models expression data." ,"[NA]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"sim","Simulats datasets." ,"[NA]"  );
         fprintf(stdout,"\n");
-        
-        return OK; 
+
+        return OK;
 }
 
 int print_model_help(int argc, char * argv[])
 {
         const char usage[] = " model [-options] -i <input table> -o <outdir> ";
-        fprintf(stdout,"\nUsage: %s %s\n\n",basename(argv[0]) ,usage);	
+        fprintf(stdout,"\nUsage: %s %s\n\n",basename(argv[0]) ,usage);
         fprintf(stdout,"Options:\n\n");
-	
+
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--in","Input expression table" ,"[NA]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--out","Output directory." ,"[NA]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--nthread","Number of threads." ,"[8]"  );
@@ -52,15 +52,15 @@ int print_model_help(int argc, char * argv[])
 
 struct parameters* get_model_param(int argc, char * argv[])
 {
-        struct parameters* param = NULL;     
-        int c, help; 
+        struct parameters* param = NULL;
+        int c, help;
 
         RUN(print_program_header(argv,"models transcriptome complexity."));
 
-        
+
         if(argc == 2){
                 RUN(print_model_help(argc,argv));
-                exit(EXIT_SUCCESS); 
+                exit(EXIT_SUCCESS);
         }
 
 
@@ -68,7 +68,7 @@ struct parameters* get_model_param(int argc, char * argv[])
         c = 0;
 
         RUNP(param= init_param());
-        
+
         while (1){
                 static struct option long_options[] ={
                         {"sample",required_argument,0,OPT_SAMPLE},
@@ -128,15 +128,15 @@ struct parameters* get_model_param(int argc, char * argv[])
 
         if(help){
                 RUN(print_model_help(argc,argv));
-                exit(EXIT_SUCCESS); 
+                exit(EXIT_SUCCESS);
         }
         ASSERT(param->infile != NULL,"No input file.");
         ASSERT(param->outdir != NULL,"No output directory.");
 
-        
+
         RUN(log_command_line(argc, argv));
-        
-        LOG_MSG("Read param.");       
+
+        LOG_MSG("Read param.");
         return param;
 ERROR:
         LOG_MSG("Something went wrong. Try using the -h option.");
@@ -147,9 +147,9 @@ ERROR:
 int print_sim_help(int argc, char * argv[])
 {
         const char usage[] = " sim [-options] -i <model root> -o <outdir> ";
-        fprintf(stdout,"\nUsage: %s %s\n\n",basename(argv[0]) ,usage);	
+        fprintf(stdout,"\nUsage: %s %s\n\n",basename(argv[0]) ,usage);
         fprintf(stdout,"Options:\n\n");
-	
+
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--in","Path to model directory." ,"[NA]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--ncell","Number of cells." ,"[96]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--depth","Read depth." ,"[80,000]"  );
@@ -161,26 +161,26 @@ int print_sim_help(int argc, char * argv[])
 
 struct parameters* get_sim_param(int argc, char * argv[])
 {
-        struct parameters* param = NULL;     
+        struct parameters* param = NULL;
         int i,c,f,g, count, help;
         char *tmp;
-        
-        
+
+
         RUN(print_program_header(argv,"models trascriptome complexity."));
-        
+
         if(argc == 2){
                 RUN(print_sim_help(argc,argv));
-                exit(EXIT_SUCCESS); 
+                exit(EXIT_SUCCESS);
         }
-        
+
         help = 0;
         c = 0;
 
         RUNP(param= init_param());
-        
+
         while (1){
                 static struct option long_options[] ={
-                        {"gene",required_argument,0,OPT_TARGET_GENES},                        
+                        {"gene",required_argument,0,OPT_TARGET_GENES},
                         {"sample",required_argument,0,OPT_SAMPLE},
                         {"in",required_argument,0, 'i'},
                         {"out",required_argument,0, 'o'},
@@ -192,14 +192,14 @@ struct parameters* get_sim_param(int argc, char * argv[])
                         {"help",0,0,'h'},
                         {0, 0, 0, 0}
                 };
-                
+
                 int option_index = 0;
                 c = getopt_long_only (argc, argv,"o:i:h",long_options, &option_index);
-                
+
                 if (c == -1){
                         break;
                 }
-                
+
                 switch(c) {
                 case 0:
                         break;
@@ -220,11 +220,11 @@ struct parameters* get_sim_param(int argc, char * argv[])
                         g = 0;
                         for(i = 0;i < strlen(tmp);i++){
                                 if(tmp[i] != ','){
-                                        if(g != 49){                                                
+                                        if(g != 49){
                                                 param->gene_names[f][g] = tmp[i];
                                         }
                                         g++;
-                                        
+
                                 }else{
                                         param->gene_names[f][g] = 0;
                                         f++;
@@ -233,7 +233,7 @@ struct parameters* get_sim_param(int argc, char * argv[])
                         }
                         param->gene_names[f][g] = 0;
 
-                        break; 
+                        break;
                 case OPT_SAMPLE:
                         tmp = optarg;
                         count = byg_count(",", tmp);
@@ -297,19 +297,19 @@ struct parameters* get_sim_param(int argc, char * argv[])
                         break;
                 }
         }
-        
+
         if(help){
                 RUN(print_sim_help(argc,argv));
-                exit(EXIT_SUCCESS); 
+                exit(EXIT_SUCCESS);
         }
         ASSERT(param->infile != NULL,"No input file.");
-        ASSERT(param->outdir != NULL,"No output directory.");        
+        ASSERT(param->outdir != NULL,"No output directory.");
         RUN(log_command_line(argc, argv));
-        
+
         return param;
 ERROR:
         LOG_MSG("Something went wrong. Try using the -h option.");
-        free_param(param);     
+        free_param(param);
         return NULL;
 }
 
@@ -330,7 +330,7 @@ struct parameters* init_param(void)
         param->drop_Michaelisconstant = 10.0;
         param->num_samples = 0;
         param->num_cells = 96;
-        
+
         return param;
 ERROR:
         return NULL;
@@ -339,7 +339,7 @@ ERROR:
 
 void free_param(struct parameters* param)
 {
-        int i; 
+        int i;
         if(param){
                 if(param->num_samples){
                         for(i = 0; i < param->num_samples;i++){
@@ -352,7 +352,7 @@ void free_param(struct parameters* param)
                                 MFREE(param->gene_names[i]);
                         }
                         MFREE(param->gene_names);
-                
+
                 }
                 MFREE(param);
         }
@@ -369,20 +369,20 @@ int byg_count(char* pattern,char*text)
         for (i = 0;i < 256;i++){
                 T[i] = 0;
         }
-	
+
         int m = (int) strlen(pattern);
         int n = (int) strlen(text);
         int count = 0;
-	
+
         if(m > n){
                 return -1;
         }
         int mb = (1 << (m-1));
-	
+
         for (i= 0;i < m;i++){
                 T[(int)toupper(pattern[i])] |= (1 << i);
         }
-	
+
         for (i = 0;i < n;i++){
                 s <<= 1;
                 s |= 1;

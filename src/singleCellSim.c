@@ -102,7 +102,9 @@ double* pick_abundances(struct gigp_param* gigp_param, double* random, double* a
 int main (int argc, char * argv[])
 {
         struct parameters* param = NULL;
-        tlog.echo_build_config();
+
+
+        print_program_header(argv, "Models transcriptomes.");
 
         if(argc == 1){
                 /* print help */

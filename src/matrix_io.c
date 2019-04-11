@@ -18,6 +18,7 @@ struct double_matrix* read_double_matrix(char* filename, int has_col_names,int h
 
         lastchar = 1;
         while((c = fgetc(file))){
+//                fprintf(stdout,"%c",(char) c);
                 switch (c) {
                 case EOF:
                         if(n > longest_entry){
@@ -43,6 +44,7 @@ struct double_matrix* read_double_matrix(char* filename, int has_col_names,int h
                         n = 0;
                         lastchar = 0;
                         cur_columns++;
+                        //fprintf(stdout,"COL: cur_columns: %d   %d %d \n", cur_columns,min_columns,max_columns);
                         if(cur_columns >max_columns){
                                 max_columns =cur_columns;
                         }
@@ -62,7 +64,7 @@ struct double_matrix* read_double_matrix(char* filename, int has_col_names,int h
                 }
         }
 
-        ASSERT(max_columns == min_columns, "Rows seem to have different number of columns.%d %d",min_columns,max_columns);
+        ASSERT(max_columns == min_columns, "Rows seem to have different number of columns. \n%d %d",min_columns,max_columns);
 
         rewind(file);
 
