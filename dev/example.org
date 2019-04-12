@@ -1,0 +1,175 @@
+#+TITLE:  SingleCellSim Vignette
+#+AUTHOR: Timo Lassmann
+#+EMAIL:  timo.lassmann@telethonkids.org.au
+#+DATE:   2019-04-12
+#+LATEX_CLASS: report
+#+OPTIONS:  toc:nil
+#+OPTIONS: H:4
+#+LATEX_CMD: pdflatex
+* Introduction 
+  A small example of how to run the single cell transcriptiome modelling. Here we assume we have count data from a bulk experiment and want to simulate what a corresponding single cell dataset may look like. 
+
+
+** Step 1: create model 
+
+   By default, the =scs= program will create a model for each sample in a column separated file. This may take a long time! In this example we will one use 3 samples (AB01, AB02, AB03): 
+
+   #+BEGIN_SRC sh :exports both 
+     head counts.csv 
+
+   #+END_SRC
+
+   #+RESULTS:
+   | GENES | AB01 |  AB02 | AB03 |
+   | Gnai3 | 5344 |  6003 | 4824 |
+   | Cdc45 |  812 |   967 |  730 |
+   | H19   | 8346 | 14646 | 5022 |
+   | Scml2 |   88 |   142 |   63 |
+   | Narf  |  961 |  1025 |  721 |
+   | Cav2  | 1670 |  2385 | 1506 |
+   | Scmh1 |  842 |  1272 |  794 |
+   | Cox5a | 1306 |   951 | 1099 |
+   | Tbx2  |   71 |   186 |   54 |
+
+
+   To create the model: 
+
+   #+BEGIN_SRC sh :exports none 
+     ../src/scs  model --in counts.csv --out test -nthread 5 
+   #+END_SRC
+
+
+   This will create a run directory =./test/= and save all relevant data there. Note, if the run is disrupted, calling the =scs= command again will continue the calculation from the point of failure. 
+
+   The main results are in the =./test/model/= directory: 
+
+   #+BEGIN_SRC sh  :exports both
+     ls test/model
+   #+END_SRC
+
+   #+RESULTS:
+   | fingerprint.csv            |
+   | fingerprint_dist.csv       |
+   | GIGP_fit_AB01.csv          |
+   | GIGP_fit_AB02.csv          |
+   | GIGP_fit_AB03.csv          |
+   | GIGP_growth_curve_AB01.csv |
+   | GIGP_growth_curve_AB02.csv |
+   | GIGP_growth_curve_AB03.csv |
+   | GIGP_parameters.csv        |
+   | Relabundances.csv          |
+   | Relabundances_sum.csv      |
+
+   To plot the fit: 
+
+   #+BEGIN_SRC R :session one :results output graphics :file AB_model_fit.jpeg :exports both :width 240 :height 80
+     library(tidyverse)
+     library(ggplot2)
+     library(cowplot)
+
+     plot_fit_GIGP <- function(x,name) {
+       names(x) = c("X","REAL","PRED")
+       result =  ggplot(x, aes(x = X, y = REAL)) +
+         geom_point() +
+         geom_line(aes(x = X, y = PRED),size=0.5,col=c("red"))+ 
+         scale_x_continuous(trans='log2') + scale_y_continuous(limits = c(min(x$REAL)-0.5, max(x$REAL)+0.5),trans='log2')+ 
+         ggtitle(name)+ xlab("Transcipt counts") + ylab("Frequency") 
+
+       return(result)
+     }
+
+
+     file= "test/model/GIGP_fit_AB01.csv"
+     fit = read_csv(file, col_names = FALSE)
+
+     p1 <-plot_fit_GIGP(fit, "Fit AB01")
+
+     file= "test/model/GIGP_fit_AB02.csv"
+     fit = read_csv(file, col_names = FALSE)
+
+     p2 <-plot_fit_GIGP(fit, "Fit AB02")
+
+     file= "test/model/GIGP_fit_AB03.csv"
+     fit = read_csv(file, col_names = FALSE)
+
+     p3 <-plot_fit_GIGP(fit, "Fit AB03")
+
+     p = plot_grid(p1, p2, p3, cols=3)
+
+     filename = paste("AB_model_fit.jpeg",sep = "");
+     ggsave(filename,p, dpi = 300,width = 240, height = 80, unit = "mm")
+     #+END_SRC
+
+
+** Step 2: Simulate some single  cell data sets  
+   :PROPERTIES:
+   :ORDERED:  t
+   :END:
+
+   This step is poorly documented - need to fix. For now run: 
+
+#+BEGIN_SRC 
+../src/scs sim  -in counts.csv --out test --nthread 4 --sample AB01 -gene Gnai3,Cdc45,H19,Scml2,Narf,Cav2,Scmh1,Cox5a,Tbx2
+#+END_SRC
+
+Note we need: 
+- the original count table
+- the path to the model directory (created in step 1)
+- the name of the sample
+- (optional) a list of gene names to be highlighted... 
+
+
+
+
+#+BEGIN_SRC R :session one :results output graphics :file AB_sim.jpeg :exports both :width 240 :height 240
+library(viridis);
+library(ggplot2);
+library(gplots);
+library(tibble);
+library(dplyr);
+
+nzmean <- function(x) {
+if (all(x==0)) 0 else mean(x)
+}
+nzcount <- function(x) {
+sum(x !=0);
+}
+
+
+mat = read.csv("test/sim/extable_AB01_96_80000_CV0.750000.csv",header = T,row.names = 1) 
+y = mat;
+mean = apply(y,1,nzmean)
+count <- apply(y,1, nzcount)
+count = count / ncol(mat) * 100
+
+cat = gsub("Blankgene[[:digit:]]+","Blank",rownames(mat) )
+
+
+scheme = viridis_pal(option = "D")(length(unique(cat))-1) 
+
+scheme = c("#999999",scheme)
+
+ylabel = paste("Fraction Detected (% of",ncol(mat),")");
+
+
+
+tib = tibble(mean = mean, count = count , cat = cat) 
+
+gene = tib %>%  filter(cat != "Blank")
+
+c = ggplot(tib, aes (mean,count))
+c = c+ geom_point(aes())
+c = c + labs(x="Mean counts",y=ylabel,title="Detection vs counts")
+#c = c + scale_color_manual(values= scheme)
+c = c + scale_x_log10(lim = c(0.1,1000))
+c = c + geom_text(aes(label = cat),check_overlap = TRUE,data = gene,col =c("red")) + theme(legend.position = c(0.8, 0.2))
+
+
+filename = paste("AB_sim.jpeg",sep = "");
+     ggsave(filename,c, dpi = 300,width = 240, height = 240, unit = "mm")
+     
+
+#+END_SRC
+
+#+RESULTS:
+[[file:AB_sim.jpeg]]

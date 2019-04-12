@@ -3,8 +3,12 @@
 
 LIB_TLDEVELDIR = @LIB_TLDEVELDIR@
 
-MYLIBDIRS = ../tldevel/libthrpool.a \
-../tldevel/libtldevel.a
+
+AM_LDFLAGS = @DEAD_STRIP@
+AM_LDFLAGS += -Wno-undef
+
+
+MYLIBDIRS = ../tldevel/libtldevel.a
 
 
 MYINCDIRS = -I${top_builddir}/${LIB_TLDEVELDIR} \

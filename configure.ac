@@ -7,6 +7,8 @@ AC_PROG_INSTALL
 
 # Checks for libraries.
 
+
+
 AC_PATH_PROG(GSL_CONFIG, gsl-config, no)
 
 AC_MSG_CHECKING([for GSL ])
@@ -69,13 +71,29 @@ AC_CHECK_LIB([gslcblas], [cblas_sdot])
 # FIXME: Replace `main' with a function in `-lgsl':
 
 
-AC_CHECK_LIB([gsl],[gsl_integration_qag],[],[AC_MSG_ERROR([gsl library missing!])])
+AC_CHECK_LIB([gsl],[gsl_integration_qag],[],) #[AC_MSG_ERROR([gsl library missing!])])
+
+
+#sudo dnf install gsl-devel
+
 
 AM_CONDITIONAL([GOT_GSL], [ test "$ac_cv_lib_gsl_gsl_integration_qag" = "yes"])
 
 if test "$ac_cv_lib_gsl_gsl_integration_qag" = "no";then
+echo "-------------------------------------------"
+echo " Unable to find GSL library on this system!"
+echo "-------------------------------------------"
+echo ""
+echo "On Fedora install using: "
+echo "   sudo dnf install gsl-devel"
+echo ""
+echo "On Ubuntu install using: "
+echo ""
+echo "   sudo apt install libgsl-dev"
+echo ""
 AC_MSG_ERROR([ERROR: GSL library was not found on your system.])
 fi
+
 
 # FIXME: Replace `main' with a function in `-lm':
 AC_CHECK_LIB([m], [log])
@@ -116,10 +134,23 @@ AC_MSG_ERROR([TLLIB])
 fi
 
 
-
 LIB_TLDEVELDIR="tldevel"
 AC_SUBST(LIB_TLDEVELDIR)
 
+
+AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
+
+
+AC_CANONICAL_HOST
+case $host_os in
+darwin* )
+DEAD_STRIP="-Wl,-dead_strip"
+;;
+*)
+DEAD_STRIP="-Wl,--gc-sections -Wl,--as-needed"
+;;
+esac
+AC_SUBST(DEAD_STRIP)
 
 
 AC_ARG_ENABLE(debugging,[AS_HELP_STRING([--enable-debugging],[include debugging code])
