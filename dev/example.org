@@ -38,6 +38,8 @@
      ../src/scs  model --in counts.csv --out test -nthread 5 
    #+END_SRC
 
+   #+RESULTS:
+
 
    This will create a run directory =./test/= and save all relevant data there. Note, if the run is disrupted, calling the =scs= command again will continue the calculation from the point of failure. 
 
@@ -100,6 +102,9 @@
      ggsave(filename,p, dpi = 300,width = 240, height = 80, unit = "mm")
      #+END_SRC
 
+     #+RESULTS:
+     [[file:AB_model_fit.jpeg]]
+
 
 ** Step 2: Simulate some single  cell data sets  
    :PROPERTIES:
@@ -108,9 +113,11 @@
 
    This step is poorly documented - need to fix. For now run: 
 
-#+BEGIN_SRC 
+#+BEGIN_SRC sh
 ../src/scs sim  -in counts.csv --out test --nthread 4 --sample AB01 -gene Gnai3,Cdc45,H19,Scml2,Narf,Cav2,Scmh1,Cox5a,Tbx2
 #+END_SRC
+
+#+RESULTS:
 
 Note we need: 
 - the original count table
