@@ -100,15 +100,10 @@ int fit_gigp(struct gigp_param* gigp_param,double* fx_unique_transcript_count, i
         gsl_vector_free(ss);
         gsl_multimin_fminimizer_free (s);
         MFREE(par);
-
         return OK;
 ERROR:
         return FAIL;
 }
-
-
-
-
 
 double give_me_sichel_p0(struct gigp_param* gigp_param,double* p )
 {
@@ -147,9 +142,6 @@ double give_me_sichel_p0(struct gigp_param* gigp_param,double* p )
                 //printf("%f	%f\n",i,result.val);
                 bessel2 =  result.val;
         }
-
-
-
 
         y = pow((  sqrt( pow(alpha,2.0) - 2.0* alpha*beta  )   / alpha  ),gamma) * 1.0 / bessel1 * (pow(beta,x)/  1.0 )  * bessel2;
         sum += y;

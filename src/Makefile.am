@@ -30,6 +30,7 @@ user_interface.h \
 singleCellSim.c \
 gigp.h \
 gigp.c \
+matrix_io.h \
 matrix_io.c \
 outdir.h \
 outdir.c

@@ -1,4 +1,6 @@
 AC_INIT([singleCellsim], [m4_esyscmd_s([git describe --always])])
+
+AC_USE_SYSTEM_EXTENSIONS
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE
 # Checks for programs.
@@ -112,9 +114,11 @@ AC_TYPE_UINT8_T
 AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
 AC_FUNC_MALLOC
 AC_FUNC_REALLOC
+AC_FUNC_STRNLEN
 AC_CHECK_FUNCS([getcwd mkdir pow sqrt])
 AC_CHECK_FUNCS([floor])
 AC_CHECK_FUNCS([strstr])
+AC_CHECK_FUNCS([strcspn])
 
 AC_CONFIG_FILES([Makefile src/Makefile])
 

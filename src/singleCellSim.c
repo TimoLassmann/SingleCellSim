@@ -3,7 +3,6 @@
 #include "outdir.h"
 #include "gigp.h"
 
-
 struct unique_transcript_count{
         double* x;
         int max;
@@ -47,6 +46,8 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
 int cmp_gene_ex_struct(const void *a, const void *b);
 
 int run_sim_scs(struct parameters* param);
+
+int filter_matrix_tpm(struct double_matrix* m, double tpm_threshold);
 
 int init_gigp_param_out_table(struct shared_data* bsd, struct double_matrix* input);
 
@@ -149,8 +150,11 @@ int run_model_scs(struct parameters* param)
         DECLARE_CHK(MAIN_CHECK, buffer);
 
         /* Read in counts..  */
-        RUNP(m = read_double_matrix(param->infile,1,1));
 
+        RUNP(m =  read_dm(param->infile,1,1));
+
+        /* filter outlowly expressed stuff  */
+        RUN(filter_matrix_tpm(m,1.0));
         /* init gigparam->out. */
         RUN(init_gigp_param_out_table(bsd,m));
         //print_double_matrix(bsd->gigp_param_out_table,stdout,1,1);
@@ -160,7 +164,7 @@ int run_model_scs(struct parameters* param)
         snprintf(buffer, BUFFER_LEN, "infile: %s datadim:%d %d.",param->infile, m->ncol,m->nrow);
         RUN_CHECKPOINT(MAIN_CHECK,fit_models_to_table(bsd,m),buffer);
 
-        LOG_MSG("Write preliminart model parameters.");
+        LOG_MSG("Write preliminary model parameters.");
         snprintf(buffer, BUFFER_LEN, "Write preliminary parameters.");
         RUN_CHECKPOINT(MAIN_CHECK,write_gigp_param_table_to_file(bsd),buffer);
 
@@ -286,6 +290,59 @@ ERROR:
         return FAIL;
 }
 
+int filter_matrix_tpm(struct double_matrix* m, double tpm_threshold)
+{
+        int i,j;
+        double* sums = NULL;
+        int* keep = NULL;
+        int* dropped = NULL;
+
+        MMALLOC(sums, sizeof(double)* m->ncol);
+        MMALLOC(keep, sizeof(double)* m->ncol);
+        MMALLOC(dropped, sizeof(double)* m->ncol);
+        for(i = 0; i <  m->ncol;i++){
+                sums[i] = 0.0;
+                keep[i] = 0;
+                dropped[i] = 0;
+        }
+
+        for(i = 0; i <  m->nrow;i++){
+                for(j = 0; j < m->ncol;j++){
+                        sums[j]+= m->matrix[i][j];
+                }
+        }
+
+        for(i = 0; i <  m->nrow;i++){
+                for(j = 0; j < m->ncol;j++){
+                        if(m->matrix[i][j] / sums[j] * 1000000.0 < tpm_threshold){
+                                m->matrix[i][j] = 0.0;
+                                dropped[j]++;
+                        }else{
+                                keep[j]++;
+                        }
+                }
+        }
+
+        fprintf(stdout,"Sample\tkeep\tdropped\n");
+        for(j = 0; j < m->ncol;j++){
+                fprintf(stdout,"%s\t%d\t%d\n", m->col_names[j], keep[j],dropped[j]);
+        }
+
+
+        MFREE(sums);
+        MFREE(keep);
+        MFREE(dropped);
+
+
+
+        return OK;
+ERROR:
+        MFREE(sums);
+        MFREE(keep);
+        MFREE(dropped);
+        return FAIL;
+}
+
 int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,int target)
 {
         char buffer[BUFFER_LEN];
@@ -336,13 +393,13 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
         gsl_rng *rfff = gsl_rng_alloc (T);
         LOG_MSG("Allocating expression table: %d %d", bsd->param->num_cells, num_genes);
         /* alloc outout table and aux. vector  */
-        RUNP(sim_table = alloc_double_matrix(num_cells,num_genes,m->name_len));
+        RUNP(sim_table = alloc_double_matrix(num_cells,num_genes, BUFFER_LEN));
         /* fill fake names */
         for(i = 0; i < num_cells ;i++){
-                snprintf(sim_table->col_names[i],m->name_len,"Cell%d",i+1);
+                snprintf(sim_table->col_names[i],BUFFER_LEN,"Cell%d",i+1);
         }
         for(j = 0; j < num_genes;j++){
-                snprintf(sim_table->row_names[j],m->name_len,"Blankgene%d",j+1);
+                snprintf(sim_table->row_names[j],BUFFER_LEN,"Blankgene%d",j+1);
         }
 
         /* sort genes in target sample by expression */
@@ -362,7 +419,7 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
                 }
                 for(c = 0; c < bsd->param->num_gene_targets;c++){
                         if(strstr(sort_genes[i]->name, bsd->param->gene_names[c])!= NULL){
-                                snprintf(sim_table->row_names[j],m->name_len,"%s",sort_genes[i]->name);
+                                snprintf(sim_table->row_names[j],BUFFER_LEN,"%s",sort_genes[i]->name);
                         }
                 }
                 j--;
@@ -377,6 +434,7 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
         for(j = 0; j < num_genes;j++){
                 libdepth += rel_abundances[j];
         }
+
 
         for(i = 0; i < num_cells ;i++){
                 for(j = 0; j < num_genes;j++){
@@ -452,13 +510,13 @@ int fingerprints(struct shared_data* bsd, struct double_matrix* m)
         /* parsing top percentages .  */
         double resolution = 100;
 
-        RUNP(f = alloc_double_matrix(m->ncol, resolution,m->name_len));
+        RUNP(f = alloc_double_matrix(m->ncol, resolution,BUFFER_LEN));
         for(i = 0; i < m->ncol;i++){
-                snprintf(f->col_names[i],m->name_len, "%s",m->col_names[i]);
+                snprintf(f->col_names[i],BUFFER_LEN, "%s",m->col_names[i]);
         }
 
         for(i = 0; i < resolution;i++){
-                snprintf(f->row_names[i],m->name_len, "Prob%0.2f_%0.2f", (double) i / resolution,(double) (i+1) / resolution);
+                snprintf(f->row_names[i],BUFFER_LEN, "Prob%0.2f_%0.2f", (double) i / resolution,(double) (i+1) / resolution);
         }
 
         for(i = 0; i < m->ncol;i++){
@@ -478,14 +536,14 @@ int fingerprints(struct shared_data* bsd, struct double_matrix* m)
         free_double_matrix(f);
         f = NULL;
 
-        RUNP(f = alloc_double_matrix(m->ncol,(max_genes / step + 1),m->name_len));
+        RUNP(f = alloc_double_matrix(m->ncol,(max_genes / step + 1), BUFFER_LEN));
 
         for(i = 0; i < m->ncol;i++){
-                snprintf(f->col_names[i],m->name_len, "%s",m->col_names[i]);
+                snprintf(f->col_names[i],BUFFER_LEN, "%s",m->col_names[i]);
         }
 
         for(i = 1; i < (max_genes / step + 1);i++){
-                snprintf(f->row_names[i-1],m->name_len, "TOP%d",  top_intervals[i]);
+                snprintf(f->row_names[i-1], BUFFER_LEN, "TOP%d",  top_intervals[i]);
         }
 
         min_S = INT_MAX;
@@ -581,14 +639,14 @@ int fill_rel_abundance_matrix(struct shared_data* bsd, struct double_matrix* m)
                 fprintf(stdout,"%f %d\n", bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i], max_S);
         }
         /* confusing! the matrix is flipped - samples in rows! */
-        RUNP(bsd->rel_abundances = alloc_double_matrix(  max_S +1,m->ncol,m->name_len));
+        RUNP(bsd->rel_abundances = alloc_double_matrix(  max_S +1,m->ncol, BUFFER_LEN));
 
         for(i = 0; i < m->ncol;i++){
-                snprintf(bsd->rel_abundances->row_names[i],m->name_len, "%s",m->col_names[i]);
+                snprintf(bsd->rel_abundances->row_names[i], BUFFER_LEN, "%s",m->col_names[i]);
         }
 
         for(i = 0; i < (max_S +1);i++){
-                snprintf(bsd->rel_abundances->col_names[i],m->name_len, "%d",i);
+                snprintf(bsd->rel_abundances->col_names[i], BUFFER_LEN, "%d",i);
         }
         LOG_MSG("Start creating relative abundances.");
         MMALLOC(td, sizeof(struct thread_data*) * m->ncol);
@@ -604,7 +662,8 @@ int fill_rel_abundance_matrix(struct shared_data* bsd, struct double_matrix* m)
                 td[i]->num_threads = bsd->param->num_threads;
                 RUNP(td[i]->gigp_param = init_gigp_param());
                 RUN(read_gigp_param_from_table(bsd->gigp_param_out_table,td[i]->gigp_param,i));
-                //td[i]->gigp_param->S = max_S;
+                td[i]->gigp_param->S = 100;
+
                 if((status = thr_pool_queue(bsd->pool,run_get_rel_abundances,td[i])) == -1) fprintf(stderr,"Adding job to queue failed.");
         }
         thr_pool_wait(bsd->pool);
@@ -613,12 +672,13 @@ int fill_rel_abundance_matrix(struct shared_data* bsd, struct double_matrix* m)
         //make sure dist sums to one...
         for(i = 0; i < m->ncol;i++){
                 sum = 0.0;
-                for(j = 0;j < bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i];j++){
+                for(j = 0;j <=  bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i];j++){
                         sum += bsd->rel_abundances->matrix[j][i];
                 }
 
+                fprintf(stdout,"%s %f S:%f \n", m->col_names[i], sum,bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i] );
                 for(j = 0;j < bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i];j++){
-                        bsd->rel_abundances->matrix[j][i] /= sum;
+                        //bsd->rel_abundances->matrix[j][i] /= sum;
                 }
         }
 
@@ -675,14 +735,27 @@ void* run_get_rel_abundances (void *threadarg)
         observed = data->vector;
         rel_abundance = data->bsd->rel_abundances->matrix[target];
 
-        for(i = 0; i <(int) (gigp->S+1);i++){
-                rel_abundance[i] = 0.0;
-                observed[i] =  random_float_zero_to_x(1.0);
-        }
 
+        i = 0;
+        rel_abundance[i] = 0.0;
+        observed[i] =  1.0 / (gigp->S+1.0); // random_float_zero_to_x(1.0);
+
+        for(i = 1; i <(int) (gigp->S+1);i++){
+                rel_abundance[i] = 0.0;
+                observed[i] = observed[i-1] + 1.0 / (gigp->S + 1.0);//  random_float_zero_to_x(1.0);
+        }
         qsort(observed, (int)gigp->S, sizeof(double), compare_double);
-        rel_abundance = pick_abundances(gigp, observed, rel_abundance, 0 ,(int)gigp->S,1e-7,1);
+
+        /*for(i = 0; i < (int) (gigp->S+1) - 30000;i++){
+                observed[i] = -1;
+                }*/
+        int lower_bound;
+
+        lower_bound = MACRO_MAX(0, (int) (gigp->S+1) - 30000);
+        lower_bound = 0;
+        rel_abundance = pick_abundances(gigp, observed, rel_abundance, lower_bound ,(int)gigp->S,DBL_MIN,1.0);
         qsort(rel_abundance, (int)gigp->S, sizeof(double), compare_double);
+
 
         return NULL;
 ERROR:
@@ -837,20 +910,20 @@ int init_gigp_param_out_table(struct shared_data* bsd, struct double_matrix* inp
         int i;
         ASSERT(bsd != NULL,"No shared data.");
         bsd->gigp_param_out_table = NULL;
-        RUNP(bsd->gigp_param_out_table = alloc_double_matrix(input->ncol,8,input->name_len));
+        RUNP(bsd->gigp_param_out_table = alloc_double_matrix(input->ncol,8,BUFFER_LEN));
 
         for(i = 0; i< input->ncol;i++){
-                snprintf(bsd->gigp_param_out_table->col_names[i],input->name_len, "%s",input->col_names[i]);
+                snprintf(bsd->gigp_param_out_table->col_names[i],BUFFER_LEN, "%s",input->col_names[i]);
         }
 
-        snprintf(bsd->gigp_param_out_table->row_names[GIGP_GAMMA_ROW],input->name_len,"Gamma");
-        snprintf(bsd->gigp_param_out_table->row_names[GIGP_B_ROW],input->name_len,"B");
-        snprintf(bsd->gigp_param_out_table->row_names[GIGP_C_ROW],input->name_len,"C");
-        snprintf(bsd->gigp_param_out_table->row_names[GIGP_N_ROW],input->name_len,"N");
-        snprintf(bsd->gigp_param_out_table->row_names[GIGP_s_ROW],input->name_len,"s");
-        snprintf(bsd->gigp_param_out_table->row_names[GIGP_S_ROW],input->name_len,"S");
-        snprintf(bsd->gigp_param_out_table->row_names[GIGP_MAXCOUNT_ROW],input->name_len,"max");
-        snprintf(bsd->gigp_param_out_table->row_names[GIGP_FIT_ROW],input->name_len,"Fit");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_GAMMA_ROW],BUFFER_LEN,"Gamma");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_B_ROW],BUFFER_LEN,"B");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_C_ROW],BUFFER_LEN,"C");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_N_ROW],BUFFER_LEN,"N");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_s_ROW],BUFFER_LEN,"s");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_S_ROW],BUFFER_LEN,"S");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_MAXCOUNT_ROW],BUFFER_LEN,"max");
+        snprintf(bsd->gigp_param_out_table->row_names[GIGP_FIT_ROW],BUFFER_LEN,"Fit");
         return OK;
 ERROR:
         return FAIL;
@@ -1652,10 +1725,13 @@ double* pick_abundances(struct gigp_param* gigp_param, double* random, double* a
 
         double tmp[3];
 
+        //if(outer_high    )
+
         tmp[0] = inner_low;
         tmp[1] = inner_mid;
         tmp[2] = inner_high;
 
+        //fprintf(stdout,"L:%d H:%d m:%d workon\n",outer_low, outer_high, outer_mid);
         r = random[(int)outer_mid];
         if(r == -1.0){
                 gsl_integration_workspace_free (w);
@@ -1665,7 +1741,7 @@ double* pick_abundances(struct gigp_param* gigp_param, double* random, double* a
                 inner_mid = (inner_high + inner_low )/ 2.0;
                 gsl_integration_qag (&F, 0.0, inner_mid,1e-12, 1e-16, 1000,GSL_INTEG_GAUSS61,w , &integration_result, &error);
                 integration_result = integration_result / sum;
-                //fprintf(stderr,"L:%e\tH:%e\tmid:%e\t\t%f\t%f\n", inner_low,inner_high,inner_mid, integration_result, r  );
+                //fprintf(stderr,"%d L:%e\tH:%e\tmid:%e\t\t%f\t%f\n",outer_mid, inner_low,inner_high,inner_mid, integration_result, r  );
 
                 if(fabs(integration_result - r) < DBL_EPSILON){
                         abundances[outer_mid] = inner_mid;
