@@ -14,6 +14,7 @@ struct parameters{
         double drop_Michaelisconstant;
 
         int simulated_read_depth;
+        double simulated_read_depth_SD;
         int num_samples;
         int num_gene_targets; 
 

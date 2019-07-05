@@ -227,6 +227,7 @@ struct matrix_file_specs*  analyze_data_file(char* filename)
         LOG_MSG("reading from %s",filename);
         RUNP(f_ptr = fopen(filename, "r" ));
         while((c = fgetc(f_ptr))){
+
                 if(c == EOF){
                         break;
                 }
@@ -255,6 +256,7 @@ struct matrix_file_specs*  analyze_data_file(char* filename)
                 }
 
         }
+
         //LOG_MSG("Found %d lines.",line_number);
         LOG_MSG("Max line length is %d characters.",max_line_length);
         HT_FLATTEN(HTI,ht);
@@ -859,7 +861,8 @@ int print_double_matrix(struct double_matrix* m,FILE* file, int has_col_names,in
                         fprintf(file,"%s",m->row_names[i]);
                 }
                 for(j = 0; j < m->ncol;j++){
-                        fprintf(file,",%2.4f", m->matrix[i][j]);
+                        fprintf(file,",%10.10e", m->matrix[i][j]);
+                        //fprintf(file,",%2.4f", m->matrix[i][j]);
 
                 }
                 fprintf(file,"\n");

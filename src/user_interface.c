@@ -5,10 +5,11 @@
 #define OPT_DATFILE 4
 #define OPT_NUMCELLS 5
 #define OPT_DEPTH 6
-#define OPT_CV 7
-#define OPT_LOSS 8
-#define OPT_NUM_THREAD 9
-#define OPT_DROPOUT 10
+#define OPT_SDDEPTH 7
+#define OPT_CV 8
+#define OPT_LOSS 9
+#define OPT_NUM_THREAD 10
+#define OPT_DROPOUT 11
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -153,6 +154,7 @@ int print_sim_help(int argc, char * argv[])
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--in","Path to model directory." ,"[NA]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--ncell","Number of cells." ,"[96]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--depth","Read depth." ,"[80,000]"  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--depthSD","Read depth SD." ,"[10,000]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--nthread","Number of threads." ,"[8]"  );
         fprintf(stdout,"\n");
         return OK;
@@ -188,6 +190,7 @@ struct parameters* get_sim_param(int argc, char * argv[])
                         {"nthread",required_argument,0,OPT_NUM_THREAD},
                         {"ncell",required_argument,0,OPT_NUMCELLS},
                         {"depth",required_argument,0,OPT_DEPTH},
+                        {"depthSD",required_argument,0,OPT_SDDEPTH},
                         {"CV",required_argument,0,OPT_CV},
                         {"help",0,0,'h'},
                         {0, 0, 0, 0}
@@ -277,6 +280,9 @@ struct parameters* get_sim_param(int argc, char * argv[])
                 case OPT_DEPTH:
                         param->simulated_read_depth = atoi(optarg);
                         break;
+                case OPT_SDDEPTH:
+                        param->simulated_read_depth_SD = atof(optarg);
+                        break;
                 case OPT_NUM_THREAD:
                         param->num_threads = atoi(optarg);
                         break;
@@ -326,6 +332,7 @@ struct parameters* init_param(void)
         param->num_genes = 0;
         param->num_gene_targets = 0;
         param->simulated_read_depth = 80000;
+        param->simulated_read_depth_SD = 10000.0;
         param->CV = 0.75;
         param->drop_Michaelisconstant = 10.0;
         param->num_samples = 0;

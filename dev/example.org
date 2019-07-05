@@ -180,3 +180,24 @@ filename = paste("AB_sim.jpeg",sep = "");
 
 #+RESULTS:
 [[file:AB_sim.jpeg]]
+
+library(PerformanceAnalytics) 
+
+mat = read.csv("test/sim/extable_AB01_3_20000000_CV0.750000.csv",header = T,row.names = 1) 
+mat <- tibble::rownames_to_column(mat, "GENE") 
+
+
+mat2 =read.csv("counts.csv",row.names = 1 )
+
+mat2 <- tibble::rownames_to_column(mat2, "GENE")
+x = inner_join(mat,mat2,by = "GENE")  
+
+x= column_to_rownames(x, var = "GENE")
+
+
+chart.Correlation(log(x+0.1))
+
+
+
+pairs( log( x+0.5 ), panel = panel.smooth, main = "log(secher)" )
+

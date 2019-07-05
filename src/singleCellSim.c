@@ -154,7 +154,7 @@ int run_model_scs(struct parameters* param)
         RUNP(m =  read_dm(param->infile,1,1));
 
         /* filter outlowly expressed stuff  */
-        RUN(filter_matrix_tpm(m,1.0));
+        //RUN(filter_matrix_tpm(m,1.0));
         /* init gigparam->out. */
         RUN(init_gigp_param_out_table(bsd,m));
         //print_double_matrix(bsd->gigp_param_out_table,stdout,1,1);
@@ -238,7 +238,7 @@ int run_sim_scs(struct parameters* param)
         }
 
         /* Read in counts..  */
-        RUNP(m = read_double_matrix(param->infile,1,1));
+        RUNP(m =  read_dm(param->infile,1,1));
 
         /* make sure expression table is the one used in the modelling */
         ASSERT(m->ncol == bsd->rel_abundances->nrow,"Number of samples in expression table differs from samples in model file!");
@@ -264,7 +264,6 @@ int run_sim_scs(struct parameters* param)
                 case 1: {
                         for(j = 0; j < bsd->rel_abundances->nrow;j++){
                                 if(strstr(bsd->rel_abundances->row_names[j],bsd->param->sample_names[i])!= NULL){
-
                                         RUN(make_sim_expression_table(bsd,m,j));
                                 }
                         }
@@ -361,6 +360,8 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
         int num_genes;
         int num_cells;
         int simulated_read_depth;
+        double simulated_read_depth_SD;
+        int depth;
         ASSERT(bsd != NULL,"No shared data.");
         ASSERT(m != NULL,"No expression data.");
 
@@ -378,11 +379,9 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
 
         num_cells = bsd->param->num_cells;
         simulated_read_depth = bsd->param->simulated_read_depth;
+        simulated_read_depth_SD = bsd->param->simulated_read_depth_SD;
         CV = bsd->param->CV;
         drop_k = bsd->param->drop_Michaelisconstant;
-
-
-
 
         /* red in relative abundancs */
         MMALLOC(cell_abundance, sizeof(double) * num_genes);
@@ -414,48 +413,53 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
 
         j = num_genes-1;
         for(i = 0; i < m->nrow;i++){
+
                 if(j == 0){
                         break;
                 }
-                for(c = 0; c < bsd->param->num_gene_targets;c++){
-                        if(strstr(sort_genes[i]->name, bsd->param->gene_names[c])!= NULL){
+                //for(c = 0; c < bsd->param->num_gene_targets;c++){
+                //if(strstr(sort_genes[i]->name, bsd->param->gene_names[c])!= NULL){
                                 snprintf(sim_table->row_names[j],BUFFER_LEN,"%s",sort_genes[i]->name);
-                        }
-                }
+                                //      }
+                                //}
                 j--;
         }
 
-
+        //exit(0);
 
         /* fill expression table  */
 
-        //Calculate tpm..
-        libdepth = 0.0;
+        //Calculate Tom..
+        /*libdepth = 0.0;
         for(j = 0; j < num_genes;j++){
                 libdepth += rel_abundances[j];
-        }
+                }*/
+
 
 
         for(i = 0; i < num_cells ;i++){
                 for(j = 0; j < num_genes;j++){
-                        cell_abundance[j] = rel_abundances[j] + gsl_ran_gaussian (rfff,  rel_abundances[j] * CV);
+                        cell_abundance[j] = rel_abundances[j];// + gsl_ran_gaussian (rfff,  rel_abundances[j] * CV);
                         if(cell_abundance[j] < 0){
                                 cell_abundance[j] = 0.0;
                         }
-                        double average = rel_abundances[j] / libdepth * 1000000.0;
+                        /*double average = rel_abundances[j] / libdepth * 1000000.0;
                         double p_drop = 1.0 - (average) / (average + drop_k);
                         if(random_float_zero_to_x(1.0) <= p_drop){
                                 cell_abundance[j] = 0.0;
-                        }
+                                }*/
 
                 }
+                depth = 1;
+                while(depth <= 1){
+                        depth = simulated_read_depth + gsl_ran_gaussian(rfff, simulated_read_depth_SD);
+                }
                 gsl_ran_discrete_t *sample_abundances = gsl_ran_discrete_preproc (num_genes, cell_abundance);
-                for(j = 0;j < simulated_read_depth;j++){
+                for(j = 0;j < depth;j++){
                         sim_table->matrix[(int)gsl_ran_discrete(rfff, sample_abundances)][i] += 1;
                 }
                 gsl_ran_discrete_free(sample_abundances);
         }
-
         snprintf(buffer, BUFFER_LEN, "%s/%s/extable_%s_%d_%d_CV%f.csv",bsd->param->outdir,OUTDIR_SIM,bsd->rel_abundances->row_names[target],num_cells, simulated_read_depth,CV);
         LOG_MSG("Write to %s\n",buffer);
         RUNP(out_ptr = fopen(buffer, "w"));
@@ -641,6 +645,8 @@ int fill_rel_abundance_matrix(struct shared_data* bsd, struct double_matrix* m)
         /* confusing! the matrix is flipped - samples in rows! */
         RUNP(bsd->rel_abundances = alloc_double_matrix(  max_S +1,m->ncol, BUFFER_LEN));
 
+        //have expression here...
+
         for(i = 0; i < m->ncol;i++){
                 snprintf(bsd->rel_abundances->row_names[i], BUFFER_LEN, "%s",m->col_names[i]);
         }
@@ -658,11 +664,12 @@ int fill_rel_abundance_matrix(struct shared_data* bsd, struct double_matrix* m)
                 td[i]->target = i;
                 td[i]->bsd = bsd;
                 td[i]->vector = NULL;
+
                 MMALLOC(td[i]->vector,sizeof(double) * (max_S+1));
                 td[i]->num_threads = bsd->param->num_threads;
                 RUNP(td[i]->gigp_param = init_gigp_param());
                 RUN(read_gigp_param_from_table(bsd->gigp_param_out_table,td[i]->gigp_param,i));
-                td[i]->gigp_param->S = 100;
+
 
                 if((status = thr_pool_queue(bsd->pool,run_get_rel_abundances,td[i])) == -1) fprintf(stderr,"Adding job to queue failed.");
         }
@@ -676,9 +683,9 @@ int fill_rel_abundance_matrix(struct shared_data* bsd, struct double_matrix* m)
                         sum += bsd->rel_abundances->matrix[j][i];
                 }
 
-                fprintf(stdout,"%s %f S:%f \n", m->col_names[i], sum,bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i] );
+                //fprintf(stdout,"%s %f S:%f \n", m->col_names[i], sum,bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i] );
                 for(j = 0;j < bsd->gigp_param_out_table->matrix[GIGP_S_ROW][i];j++){
-                        //bsd->rel_abundances->matrix[j][i] /= sum;
+                        bsd->rel_abundances->matrix[j][i] /= sum;
                 }
         }
 
@@ -719,6 +726,8 @@ void* run_get_rel_abundances (void *threadarg)
 {
         struct thread_data *data = NULL;
         struct gigp_param* gigp = NULL;
+
+
         double* observed = NULL;
         double* rel_abundance = NULL;
         int target;
@@ -729,6 +738,7 @@ void* run_get_rel_abundances (void *threadarg)
 
         ASSERT(data->bsd != NULL,"No shared data.");
 
+
         target = data->target;
         gigp = data->gigp_param;
 
@@ -736,26 +746,15 @@ void* run_get_rel_abundances (void *threadarg)
         rel_abundance = data->bsd->rel_abundances->matrix[target];
 
 
-        i = 0;
-        rel_abundance[i] = 0.0;
-        observed[i] =  1.0 / (gigp->S+1.0); // random_float_zero_to_x(1.0);
 
-        for(i = 1; i <(int) (gigp->S+1);i++){
+        for(i = 0; i <(int) (gigp->S+1);i++){
                 rel_abundance[i] = 0.0;
-                observed[i] = observed[i-1] + 1.0 / (gigp->S + 1.0);//  random_float_zero_to_x(1.0);
+                observed[i] = random_float_zero_to_x(1.0);
         }
         qsort(observed, (int)gigp->S, sizeof(double), compare_double);
 
-        /*for(i = 0; i < (int) (gigp->S+1) - 30000;i++){
-                observed[i] = -1;
-                }*/
-        int lower_bound;
-
-        lower_bound = MACRO_MAX(0, (int) (gigp->S+1) - 30000);
-        lower_bound = 0;
-        rel_abundance = pick_abundances(gigp, observed, rel_abundance, lower_bound ,(int)gigp->S,DBL_MIN,1.0);
+        rel_abundance = pick_abundances(gigp, observed, rel_abundance, 0 ,(int)gigp->S,1e-7,1.0);
         qsort(rel_abundance, (int)gigp->S, sizeof(double), compare_double);
-
 
         return NULL;
 ERROR:
@@ -843,7 +842,7 @@ int read_gigp_param_table_from_file(struct shared_data* bsd)
                 free_double_matrix(bsd->gigp_param_out_table);
         }
         snprintf(buffer, BUFFER_LEN, "%s/%s/%s",bsd->param->outdir,OUTDIR_MODEL,"GIGP_parameters.csv");
-        RUNP(bsd->gigp_param_out_table =read_double_matrix(buffer,1,1));
+        RUNP(bsd->gigp_param_out_table =read_dm(buffer,1,1));
 
         return OK;
 ERROR:
