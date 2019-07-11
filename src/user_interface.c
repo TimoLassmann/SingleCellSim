@@ -10,6 +10,7 @@
 #define OPT_LOSS 9
 #define OPT_NUM_THREAD 10
 #define OPT_DROPOUT 11
+#define OPT_FITONLY 12
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -46,6 +47,7 @@ int print_model_help(int argc, char * argv[])
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--in","Input expression table" ,"[NA]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--out","Output directory." ,"[NA]"  );
         fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--nthread","Number of threads." ,"[8]"  );
+        fprintf(stdout,"%*s%-*s: %s %s\n",3,"",MESSAGE_MARGIN-3,"--fitonly","Only fit model." ,"[NA]"  );
         fprintf(stdout,"\n");
         return OK;
 }
@@ -80,6 +82,7 @@ struct parameters* get_model_param(int argc, char * argv[])
                         {"ncell",required_argument,0,OPT_NUMCELLS},
                         {"depth",required_argument,0,OPT_DEPTH},
                         {"CV",required_argument,0,OPT_CV},
+                        {"fitonly",0,0,OPT_FITONLY},
                         {"help",0,0,'h'},
                         {0, 0, 0, 0}
                 };
@@ -93,6 +96,9 @@ struct parameters* get_model_param(int argc, char * argv[])
 
                 switch(c) {
                 case 0:
+                        break;
+                case OPT_FITONLY:
+                        param->fitonly = 1;
                         break;
                 case OPT_DROPOUT:
                         param->drop_Michaelisconstant = atof(optarg);
@@ -337,7 +343,7 @@ struct parameters* init_param(void)
         param->drop_Michaelisconstant = 10.0;
         param->num_samples = 0;
         param->num_cells = 96;
-
+        param->fitonly = 0;
         return param;
 ERROR:
         return NULL;

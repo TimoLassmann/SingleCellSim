@@ -168,6 +168,13 @@ int run_model_scs(struct parameters* param)
         snprintf(buffer, BUFFER_LEN, "Write preliminary parameters.");
         RUN_CHECKPOINT(MAIN_CHECK,write_gigp_param_table_to_file(bsd),buffer);
 
+        if(param->fitonly){
+                free_double_matrix(m);
+                free_shared_data(bsd);
+                DESTROY_CHK(MAIN_CHECK);
+
+                return OK;
+        }
         LOG_MSG("Make growth curves.");
         /* fit curves, print and calculate S (estmated number of transcripts in samples.  */
         snprintf(buffer, BUFFER_LEN, "datadim:%d %d.",m->ncol,m->nrow);
@@ -419,9 +426,9 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
                 }
                 //for(c = 0; c < bsd->param->num_gene_targets;c++){
                 //if(strstr(sort_genes[i]->name, bsd->param->gene_names[c])!= NULL){
-                                snprintf(sim_table->row_names[j],BUFFER_LEN,"%s",sort_genes[i]->name);
-                                //      }
-                                //}
+                snprintf(sim_table->row_names[j],BUFFER_LEN,"%s",sort_genes[i]->name);
+                //      }
+                //}
                 j--;
         }
 
@@ -431,9 +438,9 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
 
         //Calculate Tom..
         /*libdepth = 0.0;
-        for(j = 0; j < num_genes;j++){
-                libdepth += rel_abundances[j];
-                }*/
+          for(j = 0; j < num_genes;j++){
+          libdepth += rel_abundances[j];
+          }*/
 
 
 
@@ -444,10 +451,10 @@ int make_sim_expression_table(struct shared_data* bsd, struct double_matrix* m,i
                                 cell_abundance[j] = 0.0;
                         }
                         /*double average = rel_abundances[j] / libdepth * 1000000.0;
-                        double p_drop = 1.0 - (average) / (average + drop_k);
-                        if(random_float_zero_to_x(1.0) <= p_drop){
-                                cell_abundance[j] = 0.0;
-                                }*/
+                          double p_drop = 1.0 - (average) / (average + drop_k);
+                          if(random_float_zero_to_x(1.0) <= p_drop){
+                          cell_abundance[j] = 0.0;
+                          }*/
 
                 }
                 depth = 1;

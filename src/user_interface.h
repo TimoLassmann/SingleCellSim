@@ -18,7 +18,7 @@ struct parameters{
         int num_samples;
         int num_gene_targets; 
 
-       
+        int fitonly;
         int num_threads;
         int num_genes;
         int num_cells;
