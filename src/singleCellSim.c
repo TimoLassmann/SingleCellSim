@@ -183,7 +183,6 @@ int run_model_scs(struct parameters* param)
                 free_double_matrix(m);
                 free_shared_data(bsd);
                 DESTROY_CHK(MAIN_CHECK);
-
                 return OK;
         }
         /* calculate relative abundances...  */
