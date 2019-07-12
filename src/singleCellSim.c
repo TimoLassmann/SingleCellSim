@@ -168,13 +168,6 @@ int run_model_scs(struct parameters* param)
         snprintf(buffer, BUFFER_LEN, "Write preliminary parameters.");
         RUN_CHECKPOINT(MAIN_CHECK,write_gigp_param_table_to_file(bsd),buffer);
 
-        if(param->fitonly){
-                free_double_matrix(m);
-                free_shared_data(bsd);
-                DESTROY_CHK(MAIN_CHECK);
-
-                return OK;
-        }
         LOG_MSG("Make growth curves.");
         /* fit curves, print and calculate S (estmated number of transcripts in samples.  */
         snprintf(buffer, BUFFER_LEN, "datadim:%d %d.",m->ncol,m->nrow);
@@ -184,6 +177,15 @@ int run_model_scs(struct parameters* param)
         snprintf(buffer, BUFFER_LEN, "Write parameters.");
         RUN_CHECKPOINT(MAIN_CHECK,write_gigp_param_table_to_file(bsd),buffer);
 
+
+
+        if(param->fitonly){
+                free_double_matrix(m);
+                free_shared_data(bsd);
+                DESTROY_CHK(MAIN_CHECK);
+
+                return OK;
+        }
         /* calculate relative abundances...  */
         //RUN(print_double_matrix(bsd->gigp_param_out_table,stdout ,1,1));
         snprintf(buffer, BUFFER_LEN, "Calculate relative abundances.");
